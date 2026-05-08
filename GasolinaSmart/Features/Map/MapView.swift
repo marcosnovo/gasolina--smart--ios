@@ -20,29 +20,30 @@ struct MapView: View {
 
             VStack {
                 topControls
+
+                if store.isLoading && store.allStations.isEmpty {
+                    loadingPill
+                        .padding(.top, Theme.Spacing.sm)
+                }
+
                 Spacer()
+
+                if let error = store.error, store.allStations.isEmpty {
+                    errorBanner(error)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.bottom, Theme.Spacing.sm)
+                }
+
                 bottomContent
             }
 
-            if store.isLoading && store.allStations.isEmpty {
-                loadingOverlay
-            }
-
-            if let error = store.error {
-                errorOverlay(error)
-            }
-
-            if !store.isLoading && store.allStations.isEmpty && store.error == nil {
-                noDataOverlay
-            }
-
-            if !locationManager.isAuthorized && !store.isLoading {
+            if !locationManager.isAuthorized && !store.isLoading && store.allStations.isEmpty {
                 noLocationOverlay
             }
         }
         .task {
             locationManager.requestLocation()
-            await store.loadStations()
+            await store.loadStations(near: locationManager.location)
         }
         .onChange(of: locationManager.location) { _, _ in
             updateVisibleStations()
@@ -273,103 +274,47 @@ struct MapView: View {
         .clipShape(Capsule())
     }
 
-    private var loadingOverlay: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.1))
-                    .frame(width: 80, height: 80)
-
-                Image(systemName: "fuelpump.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.tint)
-                    .symbolEffect(.pulse, options: .repeating)
-            }
-
-            VStack(spacing: Theme.Spacing.xs) {
-                Text("Buscando gasolineras")
-                    .font(Theme.Fonts.headline)
-                Text("Conectando con datos del Ministerio...")
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
-            }
+    private var loadingPill: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Cargando gasolineras cercanas...")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
         }
-        .padding(.horizontal, Theme.Spacing.xl)
-        .padding(.vertical, Theme.Spacing.lg)
-        .frame(maxWidth: 260)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
-        .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
+        .clipShape(Capsule())
+        .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
-    private func errorOverlay(_ message: String) -> some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.1))
-                    .frame(width: 80, height: 80)
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.orange)
-            }
-
-            VStack(spacing: Theme.Spacing.xs) {
-                Text("Error al cargar datos")
-                    .font(Theme.Fonts.headline)
-                Text(message)
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
-                    .multilineTextAlignment(.center)
-            }
-
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(.orange)
+            Text("Error al cargar")
+                .font(.system(size: 13, weight: .medium))
+            Spacer()
             Button {
-                Task { await store.loadStations() }
+                Task { await store.loadStations(near: locationManager.location) }
             } label: {
                 Text("Reintentar")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, Theme.Spacing.xl)
-                    .padding(.vertical, 10)
-                    .background(Theme.Colors.accentGradient)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor)
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, Theme.Spacing.xl)
-        .padding(.vertical, Theme.Spacing.lg)
-        .frame(maxWidth: 280)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
-    }
-
-    private var noDataOverlay: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.1))
-                    .frame(width: 80, height: 80)
-
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.tint)
-                    .symbolEffect(.variableColor, options: .repeating)
-            }
-
-            VStack(spacing: Theme.Spacing.xs) {
-                Text("Conectando con el servidor")
-                    .font(Theme.Fonts.headline)
-                Text("Obteniendo precios actualizados...")
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
-            }
-        }
-        .padding(.horizontal, Theme.Spacing.xl)
-        .padding(.vertical, Theme.Spacing.lg)
-        .frame(maxWidth: 260)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
-        .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+        .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
     }
 
     private var noLocationOverlay: some View {

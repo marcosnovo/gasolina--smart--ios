@@ -9,7 +9,7 @@ final class StationStore {
     private(set) var lastUpdated: Date?
     private(set) var isUsingCache = false
 
-    func loadStations() async {
+    func loadStations(near location: CLLocation? = nil) async {
         if allStations.isEmpty, let cached = await StationCache.shared.getStale() {
             allStations = cached
             lastUpdated = await StationCache.shared.get()?.timestamp
@@ -25,9 +25,20 @@ final class StationStore {
         error = nil
 
         do {
-            let stations = try await FuelAPIService.shared.fetchStations()
-            allStations = stations
-            await StationCache.shared.set(stations)
+            if let location {
+                let result = try await FuelAPIService.shared.fetchStationsProgressively(
+                    latitude: location.coordinate.latitude,
+                    longitude: location.coordinate.longitude
+                )
+                if allStations.isEmpty {
+                    allStations = result.nearby
+                }
+                allStations = result.all
+            } else {
+                let stations = try await FuelAPIService.shared.fetchStations()
+                allStations = stations
+            }
+            await StationCache.shared.set(allStations)
             lastUpdated = Date()
             isUsingCache = false
         } catch {

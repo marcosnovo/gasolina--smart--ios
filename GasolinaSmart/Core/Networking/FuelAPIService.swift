@@ -20,7 +20,31 @@ actor FuelAPIService {
         return newSession
     }
 
+    struct ProgressiveResult: Sendable {
+        let nearby: [FuelStation]
+        let all: [FuelStation]
+    }
+
     func fetchStations() async throws -> [FuelStation] {
+        let data = try await downloadData()
+        return try await parseInBackground(data)
+    }
+
+    func fetchStationsProgressively(
+        latitude: Double,
+        longitude: Double,
+        nearbyRadiusKm: Double = 60
+    ) async throws -> ProgressiveResult {
+        let data = try await downloadData()
+        return try await parseProgressively(
+            data,
+            latitude: latitude,
+            longitude: longitude,
+            nearbyRadiusKm: nearbyRadiusKm
+        )
+    }
+
+    private func downloadData() async throws -> Data {
         guard let url = URL(string: baseURL) else {
             throw FuelAPIError.invalidURL
         }
@@ -36,7 +60,7 @@ actor FuelAPIService {
             throw FuelAPIError.httpError(httpResponse.statusCode)
         }
 
-        return try await parseInBackground(data)
+        return data
     }
 
     private func parseInBackground(_ data: Data) async throws -> [FuelStation] {
@@ -50,6 +74,69 @@ actor FuelAPIService {
                 }
             }
         }
+    }
+
+    private func parseProgressively(
+        _ data: Data,
+        latitude: Double,
+        longitude: Double,
+        nearbyRadiusKm: Double
+    ) async throws -> ProgressiveResult {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let result = try self.parseResponseProgressively(
+                        data,
+                        latitude: latitude,
+                        longitude: longitude,
+                        nearbyRadiusKm: nearbyRadiusKm
+                    )
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private nonisolated func parseResponseProgressively(
+        _ data: Data,
+        latitude: Double,
+        longitude: Double,
+        nearbyRadiusKm: Double
+    ) throws -> ProgressiveResult {
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        guard let listaEstaciones = json?["ListaEESSPrecio"] as? [[String: Any]] else {
+            throw FuelAPIError.parsingFailed
+        }
+
+        let dateString = json?["Fecha"] as? String
+        let sourceDate = parseSourceDate(dateString) ?? Date()
+
+        let degreeThreshold = nearbyRadiusKm / 111.0
+        let lonThreshold = nearbyRadiusKm / (111.0 * cos(latitude * .pi / 180.0))
+
+        var nearbyRaw: [[String: Any]] = []
+        var farRaw: [[String: Any]] = []
+
+        for raw in listaEstaciones {
+            if let latStr = raw["Latitud"] as? String,
+               let lonStr = raw["Longitud (WGS84)"] as? String,
+               let lat = parseSpanishDecimal(latStr),
+               let lon = parseSpanishDecimal(lonStr),
+               abs(lat - latitude) < degreeThreshold,
+               abs(lon - longitude) < lonThreshold {
+                nearbyRaw.append(raw)
+            } else {
+                farRaw.append(raw)
+            }
+        }
+
+        let nearby = nearbyRaw.compactMap { parseStation($0, sourceDate: sourceDate) }
+        let far = farRaw.compactMap { parseStation($0, sourceDate: sourceDate) }
+
+        return ProgressiveResult(nearby: nearby, all: nearby + far)
     }
 
     private nonisolated func parseResponse(_ data: Data) throws -> [FuelStation] {
