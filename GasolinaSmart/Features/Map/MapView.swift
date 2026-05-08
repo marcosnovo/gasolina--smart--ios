@@ -449,8 +449,19 @@ struct RadiusPickerSheet: View {
                 Text("Radio de búsqueda")
                     .font(Theme.Fonts.headline)
                 Spacer()
-                Button("OK") { dismiss() }
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                Button {
+                    preferences.preferredRadiusKm = sliderValue
+                    dismiss()
+                } label: {
+                    Text("Aplicar")
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Color.accentColor)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
 
             Text("\(Int(sliderValue)) km")
@@ -469,9 +480,6 @@ struct RadiusPickerSheet: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.Colors.tertiaryLabel)
             }
-            .onChange(of: sliderValue) { _, newValue in
-                preferences.preferredRadiusKm = newValue
-            }
 
             HStack(spacing: Theme.Spacing.sm) {
                 ForEach(UserPreferences.availableRadii, id: \.self) { radius in
@@ -479,19 +487,18 @@ struct RadiusPickerSheet: View {
                         withAnimation(.snappy(duration: 0.2)) {
                             sliderValue = radius
                         }
-                        preferences.preferredRadiusKm = radius
                     } label: {
                         Text("\(Int(radius))")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                             .background(
-                                preferences.preferredRadiusKm == radius
+                                Int(sliderValue) == Int(radius)
                                     ? AnyShapeStyle(Color.accentColor)
                                     : AnyShapeStyle(Theme.Colors.secondaryBackground)
                             )
                             .foregroundStyle(
-                                preferences.preferredRadiusKm == radius
+                                Int(sliderValue) == Int(radius)
                                     ? .white
                                     : Theme.Colors.label
                             )
