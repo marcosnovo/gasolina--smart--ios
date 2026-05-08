@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import SwiftUI
 
 @Observable
 final class StationStore {
@@ -100,6 +101,32 @@ final class StationStore {
         return .good
     }
 
+    func fuelDecisionMessage(
+        stationPrice: Decimal?,
+        averagePrice: Decimal?,
+        tankLiters: Double,
+        distanceKm: Double?
+    ) -> FuelDecision {
+        guard let stationPrice, let averagePrice else {
+            return FuelDecision(verdict: .noData, saving: nil)
+        }
+        let saving = (averagePrice - stationPrice) * Decimal(tankLiters)
+        let level = worthItLevel(saving: saving)
+
+        if let distanceKm, distanceKm > 15, level != .good {
+            return FuelDecision(verdict: .tooFar, saving: saving)
+        }
+
+        switch level {
+        case .good:
+            return FuelDecision(verdict: .refuelNow, saving: saving)
+        case .moderate:
+            return FuelDecision(verdict: .goodOption, saving: saving)
+        case .neutral:
+            return FuelDecision(verdict: .average, saving: saving)
+        }
+    }
+
     var dataFreshnessText: String {
         guard let lastUpdated else { return "Sin datos" }
         let minutes = Int(Date().timeIntervalSince(lastUpdated) / 60)
@@ -139,4 +166,47 @@ enum WorthItLevel {
         case .good: "Buen precio"
         }
     }
+}
+
+struct FuelDecision {
+    enum Verdict {
+        case refuelNow
+        case goodOption
+        case average
+        case tooFar
+        case noData
+
+        var title: String {
+            switch self {
+            case .refuelNow: "Reposta ahora"
+            case .goodOption: "Buena oportunidad"
+            case .average: "Precio normal"
+            case .tooFar: "No compensa desviarse"
+            case .noData: "Sin datos suficientes"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .refuelNow: "bolt.fill"
+            case .goodOption: "hand.thumbsup.fill"
+            case .average: "equal.circle"
+            case .tooFar: "location.slash"
+            case .noData: "questionmark.circle"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .refuelNow: Theme.Colors.goodPrice
+            case .goodOption: Theme.Colors.moderatePrice
+            case .average: Theme.Colors.neutralPrice
+            case .tooFar: Theme.Colors.expensivePrice
+            case .noData: Theme.Colors.secondaryLabel
+            }
+        }
+    }
+
+    let verdict: Verdict
+    let saving: Decimal?
 }

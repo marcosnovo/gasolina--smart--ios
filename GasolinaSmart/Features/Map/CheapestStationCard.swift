@@ -7,66 +7,115 @@ struct CheapestStationCard: View {
     let tankLiters: Double
     let distance: Double
     let onTap: () -> Void
+    let onNavigate: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(StationStore.self) private var store
 
     private var price: Decimal? {
         station.price(for: fuelType)
     }
 
-    private var saving: Decimal? {
-        guard let price, let averagePrice else { return nil }
-        return (averagePrice - price) * Decimal(tankLiters)
+    private var decision: FuelDecision {
+        store.fuelDecisionMessage(
+            stationPrice: price,
+            averagePrice: averagePrice,
+            tankLiters: tankLiters,
+            distanceKm: distance
+        )
     }
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(Theme.Colors.cheapGradient)
-                        .frame(width: 36, height: 36)
-                    Image(systemName: "trophy.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: decision.verdict.icon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(decision.verdict.color)
+                Text("Mejor opción ahora")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .textCase(.uppercase)
+                    .tracking(0.3)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
 
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(station.name)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.Colors.label)
                         .lineLimit(1)
 
-                    HStack(spacing: 6) {
-                        if let price {
-                            Text("\(price.priceFormatted) €/L")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundStyle(Theme.Colors.cheapPrice)
-                        }
-                        Text(distance.distanceFormatted)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.Colors.secondaryLabel)
-                    }
+                    Text(decision.verdict.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(decision.verdict.color)
                 }
 
                 Spacer(minLength: 4)
 
-                if let saving, saving > 0 {
-                    Text("-\(saving.savingFormatted)")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.Colors.saving)
+                VStack(alignment: .trailing, spacing: 2) {
+                    if let price {
+                        Text(price.priceFormatted)
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(Theme.Colors.label)
+                        Text("€/L")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.Colors.secondaryLabel)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+
+            HStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    if let saving = decision.saving, saving > 0 {
+                        Label("-\(saving.savingFormatted)", systemImage: "arrow.down.right")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.Colors.saving)
+                    }
+                    Label(distance.distanceFormatted, systemImage: "location.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.Colors.secondaryLabel)
                 }
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
+                Spacer()
+
+                HStack(spacing: 8) {
+                    Button(action: onTap) {
+                        Text("Detalles")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.Colors.accent)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Theme.Colors.accent.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: onNavigate) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                                .font(.system(size: 11))
+                            Text("Ir")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Theme.Colors.accentGradient)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
-            .shadow(color: Theme.Shadows.cardShadow(colorScheme), radius: 12, y: 6)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 14)
         }
-        .buttonStyle(.plain)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
+        .shadow(color: Theme.Shadows.cardShadow(colorScheme), radius: 16, y: 8)
     }
 }

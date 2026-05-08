@@ -10,27 +10,35 @@ enum Theme {
         static let secondaryLabel = Color(.secondaryLabel)
         static let tertiaryLabel = Color(.tertiaryLabel)
 
-        static let cheapPrice = Color.green.opacity(0.85)
-        static let moderatePrice = Color.orange.opacity(0.85)
-        static let expensivePrice = Color.red.opacity(0.6)
-        static let saving = Color.green
+        static let accent = Color(red: 0.16, green: 0.30, blue: 0.42)
+        static let accentWarm = Color(red: 0.85, green: 0.62, blue: 0.25)
+
+        static let goodPrice = Color(red: 0.20, green: 0.55, blue: 0.45)
+        static let neutralPrice = Color(red: 0.45, green: 0.45, blue: 0.50)
+        static let cheapPrice = Color(red: 0.20, green: 0.55, blue: 0.45)
+        static let moderatePrice = Color(red: 0.85, green: 0.62, blue: 0.25)
+        static let expensivePrice = Color(red: 0.70, green: 0.35, blue: 0.30)
+        static let saving = Color(red: 0.20, green: 0.55, blue: 0.45)
         static let cardBackground = Color(.secondarySystemBackground)
 
         static let cheapGradient = LinearGradient(
-            colors: [Color.green.opacity(0.8), Color.green.opacity(0.5)],
+            colors: [goodPrice, goodPrice.opacity(0.7)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
         static let accentGradient = LinearGradient(
-            colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
+            colors: [accent, accent.opacity(0.8)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
         static let priceCardGradient = LinearGradient(
-            colors: [Color.accentColor.opacity(0.15), Color.accentColor.opacity(0.05)],
+            colors: [accent.opacity(0.08), accent.opacity(0.02)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+
+        static let markerDefault = Color(red: 0.55, green: 0.55, blue: 0.60)
+        static let markerBest = accent
     }
 
     enum Fonts {
@@ -41,7 +49,9 @@ enum Theme {
         static let body = Font.system(.body, design: .default)
         static let subheadline = Font.system(.subheadline, design: .default)
         static let caption = Font.system(.caption, design: .default)
+        static let mono = Font.system(.caption2, design: .monospaced)
         static let price = Font.system(.title, design: .rounded, weight: .bold)
+        static let priceHero = Font.system(size: 38, weight: .bold, design: .rounded)
         static let priceLarge = Font.system(size: 42, weight: .bold, design: .rounded)
         static let priceSmall = Font.system(.headline, design: .rounded, weight: .semibold)
     }
@@ -69,7 +79,7 @@ enum Theme {
         }
 
         static func cardShadow(_ scheme: ColorScheme) -> Color {
-            scheme == .dark ? .clear : .black.opacity(0.08)
+            scheme == .dark ? .white.opacity(0.04) : .black.opacity(0.08)
         }
 
         static let soft = Color.black.opacity(0.06)
@@ -116,8 +126,8 @@ struct PremiumCard: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
-            .shadow(color: Theme.Shadows.cardShadow(colorScheme), radius: 12, y: 6)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xxl, style: .continuous))
+            .shadow(color: Theme.Shadows.cardShadow(colorScheme), radius: 16, y: 8)
     }
 }
 
@@ -126,7 +136,7 @@ struct SectionCard: ViewModifier {
         content
             .padding(Theme.Spacing.md)
             .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
 }
 

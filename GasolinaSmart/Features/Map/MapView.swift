@@ -18,8 +18,9 @@ struct MapView: View {
         ZStack {
             mapContent
 
-            VStack {
-                topControls
+            VStack(spacing: 0) {
+                topBar
+                    .padding(.top, Theme.Spacing.sm)
 
                 if store.isLoading && store.allStations.isEmpty {
                     loadingPill
@@ -84,6 +85,8 @@ struct MapView: View {
         }
     }
 
+    // MARK: - Map
+
     private var mapContent: some View {
         Map(position: $cameraPosition, selection: $selectedStationId) {
             UserAnnotation()
@@ -117,21 +120,23 @@ struct MapView: View {
         .mapStyle(.standard(pointsOfInterest: .excludingAll))
     }
 
-    private var topControls: some View {
-        HStack(spacing: Theme.Spacing.sm) {
+    // MARK: - Top Bar
+
+    private var topBar: some View {
+        HStack(spacing: 8) {
             Button {
                 showSearch = true
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.Colors.secondaryLabel)
                     Text("Buscar ciudad...")
-                        .font(Theme.Fonts.subheadline)
+                        .font(.system(size: 14, design: .rounded))
                         .foregroundStyle(Theme.Colors.tertiaryLabel)
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.vertical, 9)
                 .background(.ultraThinMaterial)
                 .clipShape(Capsule())
                 .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
@@ -140,14 +145,29 @@ struct MapView: View {
 
             Spacer()
 
-            Button { showFuelPicker = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: preferences.selectedFuelType.icon)
-                        .font(.system(size: 12))
-                    Text(preferences.selectedFuelType.shortLabel)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+            Button { showRadiusPicker = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "circle.dashed")
+                        .font(.system(size: 11))
+                    Text("\(Int(preferences.preferredRadiusKm)) km")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 9)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
+            }
+            .buttonStyle(.plain)
+
+            Button { showFuelPicker = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: preferences.selectedFuelType.icon)
+                        .font(.system(size: 11))
+                    Text(preferences.selectedFuelType.shortLabel)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .padding(.horizontal, 11)
                 .padding(.vertical, 9)
                 .background(.ultraThinMaterial)
                 .clipShape(Capsule())
@@ -156,13 +176,13 @@ struct MapView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, Theme.Spacing.sm)
     }
+
+    // MARK: - Bottom Content
 
     private var bottomContent: some View {
         VStack(spacing: Theme.Spacing.sm) {
-            HStack(spacing: Theme.Spacing.sm) {
-                radiusSelector
+            HStack {
                 Spacer()
                 locationButton
             }
@@ -183,6 +203,9 @@ struct MapView: View {
                     onTap: {
                         appState.selectedStation = cheapest
                         appState.showStationDetail = true
+                    },
+                    onNavigate: {
+                        openAppleMaps(station: cheapest)
                     }
                 )
                 .padding(.horizontal, Theme.Spacing.md)
@@ -195,6 +218,8 @@ struct MapView: View {
                 .padding(.bottom, Theme.Spacing.sm)
         }
     }
+
+    // MARK: - Supporting Views
 
     private var noNearbyCard: some View {
         VStack(spacing: Theme.Spacing.sm) {
@@ -212,23 +237,6 @@ struct MapView: View {
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
         .padding(.horizontal, Theme.Spacing.md)
-    }
-
-    private var radiusSelector: some View {
-        Button { showRadiusPicker = true } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "circle.dashed")
-                    .font(.system(size: 12))
-                Text("\(Int(preferences.preferredRadiusKm)) km")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
-            .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
-        }
-        .buttonStyle(.plain)
     }
 
     private var locationButton: some View {
@@ -278,7 +286,7 @@ struct MapView: View {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text("Cargando gasolineras cercanas...")
+            Text("Cargando gasolineras...")
                 .font(.system(size: 13, weight: .medium, design: .rounded))
         }
         .padding(.horizontal, 16)
@@ -358,6 +366,8 @@ struct MapView: View {
         .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
     }
 
+    // MARK: - Helpers
+
     private var cheapestStation: FuelStation? {
         guard let location = locationManager.location else { return nil }
         return store.cheapestStation(
@@ -377,6 +387,11 @@ struct MapView: View {
             radiusKm: preferences.preferredRadiusKm,
             fuelType: preferences.selectedFuelType
         )
+    }
+
+    private func openAppleMaps(station: FuelStation) {
+        guard let url = URL(string: "http://maps.apple.com/?daddr=\(station.latitude),\(station.longitude)&dirflg=d") else { return }
+        UIApplication.shared.open(url)
     }
 }
 
@@ -403,7 +418,7 @@ struct RadiusPickerSheet: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 7)
-                        .background(Color.accentColor)
+                        .background(Theme.Colors.accentGradient)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -439,7 +454,7 @@ struct RadiusPickerSheet: View {
                             .padding(.vertical, 8)
                             .background(
                                 Int(sliderValue) == Int(radius)
-                                    ? AnyShapeStyle(Color.accentColor)
+                                    ? AnyShapeStyle(Theme.Colors.accentGradient)
                                     : AnyShapeStyle(Theme.Colors.secondaryBackground)
                             )
                             .foregroundStyle(

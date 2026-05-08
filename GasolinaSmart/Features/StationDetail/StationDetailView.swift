@@ -25,11 +25,20 @@ struct StationDetailView: View {
         )
     }
 
+    private var decision: FuelDecision {
+        store.fuelDecisionMessage(
+            stationPrice: selectedPrice,
+            averagePrice: averagePrice,
+            tankLiters: preferences.tankSizeLiters,
+            distanceKm: distance
+        )
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.md) {
-                    priceAndInfoSection
+                    heroSection
                     comparisonSection
                     allPricesSection
                     navigationSection
@@ -60,55 +69,85 @@ struct StationDetailView: View {
         }
     }
 
-    // MARK: - Price + Info combined
+    // MARK: - Hero Section
 
-    private var priceAndInfoSection: some View {
+    private var heroSection: some View {
         VStack(spacing: Theme.Spacing.md) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(station.name)
-                        .font(Theme.Fonts.title)
-                        .lineLimit(2)
+            VStack(spacing: 6) {
+                Text(station.name)
+                    .font(Theme.Fonts.title)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
 
-                    Text(station.address)
-                        .font(Theme.Fonts.subheadline)
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
-                        .lineLimit(2)
+                Text(station.address)
+                    .font(Theme.Fonts.subheadline)
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
 
-                    HStack(spacing: Theme.Spacing.md) {
-                        Label(station.municipality, systemImage: "mappin")
-                        if let distance {
-                            Label(distance.distanceFormatted, systemImage: "location.fill")
-                        }
+                HStack(spacing: Theme.Spacing.md) {
+                    Label(station.municipality, systemImage: "mappin")
+                    if let distance {
+                        Label(distance.distanceFormatted, systemImage: "location.fill")
                     }
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
                 }
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Colors.tertiaryLabel)
+            }
 
-                Spacer(minLength: Theme.Spacing.sm)
+            if let selectedPrice {
+                VStack(spacing: 4) {
+                    Text(selectedPrice.priceFormatted)
+                        .font(Theme.Fonts.priceHero)
+                        .foregroundStyle(Theme.Colors.label)
 
-                if let selectedPrice {
-                    VStack(spacing: 2) {
-                        Text(selectedPrice.priceFormatted)
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                    HStack(spacing: 6) {
                         Text("€/L")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(Theme.Colors.secondaryLabel)
                         Text(preferences.selectedFuelType.shortLabel)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(Color.accentColor)
+                            .background(Theme.Colors.accentGradient)
                             .clipShape(Capsule())
-                            .padding(.top, 2)
                     }
                 }
+                .padding(.top, 4)
             }
+
+            HStack(spacing: 8) {
+                Image(systemName: decision.verdict.icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(decision.verdict.color)
+                Text(decision.verdict.title)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(decision.verdict.color)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(decision.verdict.color.opacity(0.1))
+            .clipShape(Capsule())
+
+            Button(action: openAppleMaps) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                        .font(.system(size: 13))
+                    Text("Cómo llegar")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(Theme.Colors.accentGradient)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+            }
+            .buttonStyle(.plain)
         }
-        .padding(Theme.Spacing.md)
+        .padding(Theme.Spacing.lg)
         .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
 
     // MARK: - Comparison
@@ -121,7 +160,6 @@ struct StationDetailView: View {
                     averagePrice: averagePrice,
                     tankLiters: preferences.tankSizeLiters
                 )
-                let worthIt = store.worthItLevel(saving: saving)
 
                 HStack(spacing: 0) {
                     ComparisonMetric(
@@ -142,15 +180,12 @@ struct StationDetailView: View {
 
                     Divider().frame(height: 40)
 
-                    VStack(spacing: 4) {
-                        Image(systemName: worthIt.icon)
-                            .font(.system(size: 16))
-                            .foregroundStyle(saving > 0 ? Theme.Colors.saving : Theme.Colors.secondaryLabel)
-                        Text(worthIt.shortMessage)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Theme.Colors.secondaryLabel)
-                    }
-                    .frame(maxWidth: .infinity)
+                    ComparisonMetric(
+                        label: "Depósito",
+                        value: "\(Int(preferences.tankSizeLiters))",
+                        unit: "L",
+                        color: Theme.Colors.secondaryLabel
+                    )
                 }
                 .padding(.vertical, Theme.Spacing.md)
                 .padding(.horizontal, Theme.Spacing.sm)
@@ -165,10 +200,10 @@ struct StationDetailView: View {
     private var allPricesSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("Todos los precios")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.Colors.secondaryLabel)
                 .textCase(.uppercase)
-                .tracking(0.3)
+                .tracking(0.5)
 
             VStack(spacing: 0) {
                 ForEach(FuelType.allCases) { fuel in
@@ -178,7 +213,7 @@ struct StationDetailView: View {
                             HStack(spacing: 10) {
                                 Image(systemName: fuel.icon)
                                     .font(.system(size: 13))
-                                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                                    .foregroundStyle(isSelected ? Theme.Colors.accent : .secondary)
                                     .frame(width: 18)
                                 Text(fuel.displayName)
                                     .font(isSelected ? .system(size: 15, weight: .semibold) : .system(size: 15))
@@ -186,11 +221,11 @@ struct StationDetailView: View {
                             Spacer()
                             Text("\(price.priceFormatted) €/L")
                                 .font(.system(size: 15, weight: isSelected ? .bold : .medium, design: .rounded))
-                                .foregroundStyle(isSelected ? Color.accentColor : Theme.Colors.secondaryLabel)
+                                .foregroundStyle(isSelected ? Theme.Colors.accent : Theme.Colors.secondaryLabel)
                         }
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 11)
                         .padding(.horizontal, Theme.Spacing.md)
-                        .background(isSelected ? Color.accentColor.opacity(0.06) : .clear)
+                        .background(isSelected ? Theme.Colors.accent.opacity(0.06) : .clear)
 
                         if fuel != FuelType.allCases.last(where: { station.price(for: $0) != nil }) {
                             Divider().padding(.leading, 44)
@@ -207,17 +242,14 @@ struct StationDetailView: View {
 
     private var navigationSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Cómo llegar")
-                .font(.system(size: 13, weight: .semibold))
+            Text("Otras apps de navegación")
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.Colors.secondaryLabel)
                 .textCase(.uppercase)
-                .tracking(0.3)
+                .tracking(0.5)
 
             HStack(spacing: Theme.Spacing.sm) {
-                NavButton(title: "Apple Maps", icon: "apple.logo", color: .primary) {
-                    openAppleMaps()
-                }
-                NavButton(title: "Google", icon: "globe", color: .blue) {
+                NavButton(title: "Google Maps", icon: "globe", color: .blue) {
                     openGoogleMaps()
                 }
                 NavButton(title: "Waze", icon: "car.fill", color: .cyan) {
