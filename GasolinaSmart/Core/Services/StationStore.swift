@@ -9,15 +9,23 @@ final class StationStore {
     private(set) var error: String?
     private(set) var lastUpdated: Date?
     private(set) var isUsingCache = false
+    private(set) var cachedAveragePrice: Decimal?
+    private var useBackend = true
 
     func loadStations(near location: CLLocation? = nil) async {
+        await loadFromBackend(location: location)
+    }
+
+    // MARK: - Backend-first loading
+
+    private func loadFromBackend(location: CLLocation?) async {
         if allStations.isEmpty, let cached = await StationCache.shared.getStale() {
             allStations = cached
             lastUpdated = await StationCache.shared.get()?.timestamp
             isUsingCache = true
         }
 
-        if let age = await StationCache.shared.cacheAge(), age < 15 * 60 {
+        if let age = await StationCache.shared.cacheAge(), age < 5 * 60 {
             isLoading = false
             return
         }
@@ -25,30 +33,69 @@ final class StationStore {
         isLoading = allStations.isEmpty
         error = nil
 
+        guard let location else {
+            isLoading = false
+            return
+        }
+
         do {
-            if let location {
-                let result = try await FuelAPIService.shared.fetchStationsProgressively(
-                    latitude: location.coordinate.latitude,
-                    longitude: location.coordinate.longitude
-                )
-                if allStations.isEmpty {
-                    allStations = result.nearby
-                }
-                allStations = result.all
+            if useBackend, await BackendAPIService.shared.isHealthy() {
+                try await loadFromBackendAPI(location: location)
             } else {
-                let stations = try await FuelAPIService.shared.fetchStations()
-                allStations = stations
+                try await loadFromDirectAPI(location: location)
             }
-            await StationCache.shared.set(allStations)
-            lastUpdated = Date()
             isUsingCache = false
         } catch {
-            if allStations.isEmpty {
+            if useBackend {
+                do {
+                    try await loadFromDirectAPI(location: location)
+                    isUsingCache = false
+                } catch {
+                    if allStations.isEmpty {
+                        self.error = error.localizedDescription
+                    }
+                }
+            } else if allStations.isEmpty {
                 self.error = error.localizedDescription
             }
         }
         isLoading = false
     }
+
+    private func loadFromBackendAPI(location: CLLocation) async throws {
+        let response = try await BackendAPIService.shared.fetchStationsNearby(
+            latitude: location.coordinate.latitude,
+            longitude: location.coordinate.longitude,
+            radiusKm: 60,
+            limit: 200
+        )
+        let stations = response.stations.map { $0.toFuelStation() }
+        allStations = stations
+        if let avg = response.average_price {
+            cachedAveragePrice = Decimal(avg)
+        }
+        if let updated = response.last_updated {
+            lastUpdated = ISO8601DateFormatter().date(from: updated) ?? Date()
+        } else {
+            lastUpdated = Date()
+        }
+        await StationCache.shared.set(stations)
+    }
+
+    private func loadFromDirectAPI(location: CLLocation) async throws {
+        let result = try await FuelAPIService.shared.fetchStationsProgressively(
+            latitude: location.coordinate.latitude,
+            longitude: location.coordinate.longitude
+        )
+        if allStations.isEmpty {
+            allStations = result.nearby
+        }
+        allStations = result.all
+        lastUpdated = Date()
+        await StationCache.shared.set(result.all)
+    }
+
+    // MARK: - Queries (local filtering)
 
     func nearbyStations(
         location: CLLocation,
@@ -85,7 +132,7 @@ final class StationStore {
     ) -> Decimal? {
         let stations = nearbyStations(location: location, radiusKm: radiusKm, fuelType: fuelType)
         let prices = stations.compactMap { $0.price(for: fuelType) }
-        guard !prices.isEmpty else { return nil }
+        guard !prices.isEmpty else { return cachedAveragePrice }
         let sum = prices.reduce(Decimal.zero, +)
         return sum / Decimal(prices.count)
     }

@@ -1,0 +1,13 @@
+{
+  "name": "gasolina-smart-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "fetch": "bun run src/fetch-once.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  }
+}
