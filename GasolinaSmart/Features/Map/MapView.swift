@@ -11,6 +11,7 @@ struct MapView: View {
     @State private var selectedStationId: String?
     @State private var showFuelPicker = false
     @State private var showSearch = false
+    @State private var showRadiusPicker = false
     @State private var visibleStations: [FuelStation] = []
 
     var body: some View {
@@ -73,6 +74,11 @@ struct MapView: View {
         .sheet(isPresented: $showSearch) {
             SearchView()
                 .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showRadiusPicker) {
+            RadiusPickerSheet()
+                .presentationDetents([.height(280)])
                 .presentationDragIndicator(.visible)
         }
     }
@@ -208,20 +214,7 @@ struct MapView: View {
     }
 
     private var radiusSelector: some View {
-        Menu {
-            ForEach(UserPreferences.availableRadii, id: \.self) { radius in
-                Button {
-                    preferences.preferredRadiusKm = radius
-                } label: {
-                    HStack {
-                        Text("\(Int(radius)) km")
-                        if preferences.preferredRadiusKm == radius {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-        } label: {
+        Button { showRadiusPicker = true } label: {
             HStack(spacing: 5) {
                 Image(systemName: "circle.dashed")
                     .font(.system(size: 12))
@@ -439,5 +432,78 @@ struct MapView: View {
             radiusKm: preferences.preferredRadiusKm,
             fuelType: preferences.selectedFuelType
         )
+    }
+}
+
+// MARK: - Radius Picker Sheet
+
+struct RadiusPickerSheet: View {
+    @Environment(UserPreferences.self) private var preferences
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var sliderValue: Double = 5
+
+    var body: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            HStack {
+                Text("Radio de búsqueda")
+                    .font(Theme.Fonts.headline)
+                Spacer()
+                Button("OK") { dismiss() }
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+            }
+
+            Text("\(Int(sliderValue)) km")
+                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .contentTransition(.numericText(value: sliderValue))
+                .animation(.snappy(duration: 0.2), value: sliderValue)
+
+            Slider(value: $sliderValue, in: 1...50, step: 1) {
+                Text("Radio")
+            } minimumValueLabel: {
+                Text("1")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.Colors.tertiaryLabel)
+            } maximumValueLabel: {
+                Text("50")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.Colors.tertiaryLabel)
+            }
+            .onChange(of: sliderValue) { _, newValue in
+                preferences.preferredRadiusKm = newValue
+            }
+
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(UserPreferences.availableRadii, id: \.self) { radius in
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            sliderValue = radius
+                        }
+                        preferences.preferredRadiusKm = radius
+                    } label: {
+                        Text("\(Int(radius))")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(
+                                preferences.preferredRadiusKm == radius
+                                    ? AnyShapeStyle(Color.accentColor)
+                                    : AnyShapeStyle(Theme.Colors.secondaryBackground)
+                            )
+                            .foregroundStyle(
+                                preferences.preferredRadiusKm == radius
+                                    ? .white
+                                    : Theme.Colors.label
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(Theme.Spacing.lg)
+        .onAppear {
+            sliderValue = preferences.preferredRadiusKm
+        }
     }
 }

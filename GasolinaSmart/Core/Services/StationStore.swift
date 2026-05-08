@@ -121,4 +121,12 @@ enum WorthItLevel {
         case .good: "arrow.down.circle.fill"
         }
     }
+
+    var shortMessage: String {
+        switch self {
+        case .neutral: "Similar"
+        case .moderate: "Compensa"
+        case .good: "Buen precio"
+        }
+    }
 }

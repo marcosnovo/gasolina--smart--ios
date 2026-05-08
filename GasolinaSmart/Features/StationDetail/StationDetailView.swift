@@ -28,9 +28,8 @@ struct StationDetailView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: Theme.Spacing.lg) {
-                    priceHeroSection
-                    headerSection
+                VStack(spacing: Theme.Spacing.md) {
+                    priceAndInfoSection
                     comparisonSection
                     allPricesSection
                     navigationSection
@@ -43,9 +42,10 @@ struct StationDetailView: View {
             .background(Theme.Colors.background)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(placement: .topBarLeading) {
                     Text(station.brand)
-                        .font(Theme.Fonts.headline)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.Colors.secondaryLabel)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -60,60 +60,55 @@ struct StationDetailView: View {
         }
     }
 
-    // MARK: - Price Hero
+    // MARK: - Price + Info combined
 
-    private var priceHeroSection: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            if let selectedPrice {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(selectedPrice.priceFormatted)
-                        .font(Theme.Fonts.priceLarge)
-                        .contentTransition(.numericText())
-                    Text("€/L")
-                        .font(Theme.Fonts.title3)
+    private var priceAndInfoSection: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(station.name)
+                        .font(Theme.Fonts.title)
+                        .lineLimit(2)
+
+                    Text(station.address)
+                        .font(Theme.Fonts.subheadline)
                         .foregroundStyle(Theme.Colors.secondaryLabel)
+                        .lineLimit(2)
+
+                    HStack(spacing: Theme.Spacing.md) {
+                        Label(station.municipality, systemImage: "mappin")
+                        if let distance {
+                            Label(distance.distanceFormatted, systemImage: "location.fill")
+                        }
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Colors.tertiaryLabel)
                 }
 
-                Text(preferences.selectedFuelType.displayName)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color.accentColor.opacity(0.8))
-                    .clipShape(Capsule())
-            } else {
-                Text("Sin precio para \(preferences.selectedFuelType.displayName)")
-                    .font(Theme.Fonts.body)
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.lg)
-        .background(Theme.Colors.priceCardGradient)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
-    }
+                Spacer(minLength: Theme.Spacing.sm)
 
-    // MARK: - Header
-
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text(station.name)
-                .font(Theme.Fonts.title)
-
-            Text(station.address)
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.Colors.secondaryLabel)
-
-            HStack(spacing: Theme.Spacing.md) {
-                Label(station.municipality, systemImage: "mappin")
-                if let distance {
-                    Label(distance.distanceFormatted, systemImage: "location.fill")
+                if let selectedPrice {
+                    VStack(spacing: 2) {
+                        Text(selectedPrice.priceFormatted)
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                        Text("€/L")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.Colors.secondaryLabel)
+                        Text(preferences.selectedFuelType.shortLabel)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                            .padding(.top, 2)
+                    }
                 }
             }
-            .font(Theme.Fonts.caption)
-            .foregroundStyle(Theme.Colors.secondaryLabel)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
     }
 
     // MARK: - Comparison
@@ -128,36 +123,39 @@ struct StationDetailView: View {
                 )
                 let worthIt = store.worthItLevel(saving: saving)
 
-                VStack(spacing: Theme.Spacing.md) {
-                    HStack(spacing: 0) {
-                        ComparisonMetric(
-                            label: "Media zona",
-                            value: "\(averagePrice.priceFormatted) €/L",
-                            color: Theme.Colors.label
-                        )
+                HStack(spacing: 0) {
+                    ComparisonMetric(
+                        label: "Media zona",
+                        value: "\(averagePrice.priceFormatted)",
+                        unit: "€/L",
+                        color: Theme.Colors.label
+                    )
 
-                        Divider()
-                            .frame(height: 36)
+                    Divider().frame(height: 40)
 
-                        ComparisonMetric(
-                            label: "Ahorro depósito",
-                            value: saving > 0 ? "-\(saving.savingFormatted)" : saving.savingFormatted,
-                            color: saving > 0 ? Theme.Colors.saving : Theme.Colors.label
-                        )
-                    }
+                    ComparisonMetric(
+                        label: "Ahorro depósito",
+                        value: saving > 0 ? "-\(saving.savingFormatted)" : saving.savingFormatted,
+                        unit: nil,
+                        color: saving > 0 ? Theme.Colors.saving : Theme.Colors.label
+                    )
 
-                    HStack(spacing: 6) {
+                    Divider().frame(height: 40)
+
+                    VStack(spacing: 4) {
                         Image(systemName: worthIt.icon)
-                            .font(.system(size: 12))
-                        Text(worthIt.message)
-                            .font(.system(size: 13, weight: .medium))
-                        Text("(\(Int(preferences.tankSizeLiters)) L)")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.Colors.tertiaryLabel)
+                            .font(.system(size: 16))
+                            .foregroundStyle(saving > 0 ? Theme.Colors.saving : Theme.Colors.secondaryLabel)
+                        Text(worthIt.shortMessage)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Theme.Colors.secondaryLabel)
                     }
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .frame(maxWidth: .infinity)
                 }
-                .sectionCard()
+                .padding(.vertical, Theme.Spacing.md)
+                .padding(.horizontal, Theme.Spacing.sm)
+                .background(Theme.Colors.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
             }
         }
     }
@@ -165,46 +163,55 @@ struct StationDetailView: View {
     // MARK: - All Prices
 
     private var allPricesSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("Todos los precios")
-                .font(Theme.Fonts.headline)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.Colors.secondaryLabel)
+                .textCase(.uppercase)
+                .tracking(0.3)
 
             VStack(spacing: 0) {
                 ForEach(FuelType.allCases) { fuel in
                     if let price = station.price(for: fuel) {
                         let isSelected = fuel == preferences.selectedFuelType
                         HStack {
-                            HStack(spacing: Theme.Spacing.sm) {
+                            HStack(spacing: 10) {
                                 Image(systemName: fuel.icon)
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 13))
                                     .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                                    .frame(width: 20)
+                                    .frame(width: 18)
                                 Text(fuel.displayName)
-                                    .font(isSelected ? Theme.Fonts.headline : Theme.Fonts.body)
+                                    .font(isSelected ? .system(size: 15, weight: .semibold) : .system(size: 15))
                             }
                             Spacer()
                             Text("\(price.priceFormatted) €/L")
-                                .font(Theme.Fonts.priceSmall)
+                                .font(.system(size: 15, weight: isSelected ? .bold : .medium, design: .rounded))
                                 .foregroundStyle(isSelected ? Color.accentColor : Theme.Colors.secondaryLabel)
                         }
                         .padding(.vertical, 10)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .background(isSelected ? Color.accentColor.opacity(0.06) : .clear)
 
                         if fuel != FuelType.allCases.last(where: { station.price(for: $0) != nil }) {
-                            Divider()
+                            Divider().padding(.leading, 44)
                         }
                     }
                 }
             }
+            .background(Theme.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
         }
-        .sectionCard()
     }
 
     // MARK: - Navigation
 
     private var navigationSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("Cómo llegar")
-                .font(Theme.Fonts.headline)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.Colors.secondaryLabel)
+                .textCase(.uppercase)
+                .tracking(0.3)
 
             HStack(spacing: Theme.Spacing.sm) {
                 NavButton(title: "Apple Maps", icon: "apple.logo", color: .primary) {
@@ -233,6 +240,7 @@ struct StationDetailView: View {
         .font(.system(size: 11))
         .foregroundStyle(Theme.Colors.tertiaryLabel)
         .frame(maxWidth: .infinity)
+        .padding(.top, Theme.Spacing.xs)
     }
 
     // MARK: - Actions
@@ -258,18 +266,26 @@ struct StationDetailView: View {
 private struct ComparisonMetric: View {
     let label: String
     let value: String
+    let unit: String?
     let color: Color
 
     var body: some View {
         VStack(spacing: 4) {
             Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.Colors.secondaryLabel)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.Colors.tertiaryLabel)
                 .textCase(.uppercase)
                 .tracking(0.3)
-            Text(value)
-                .font(Theme.Fonts.priceSmall)
-                .foregroundStyle(color)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(color)
+                if let unit {
+                    Text(unit)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.Colors.tertiaryLabel)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -283,16 +299,16 @@ private struct NavButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(color)
                 Text(title)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.Colors.label)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.vertical, 14)
             .background(Theme.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
         }

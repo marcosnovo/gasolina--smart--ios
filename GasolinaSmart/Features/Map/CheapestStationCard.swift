@@ -19,85 +19,53 @@ struct CheapestStationCard: View {
         return (averagePrice - price) * Decimal(tankLiters)
     }
 
-    private var worthIt: WorthItLevel {
-        guard let saving else { return .neutral }
-        if saving < 1 { return .neutral }
-        if saving <= 3 { return .moderate }
-        return .good
-    }
-
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 0) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Theme.Colors.cheapGradient)
-                    .frame(width: 4)
-                    .padding(.vertical, Theme.Spacing.sm)
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.Colors.cheapGradient)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
 
-                HStack(spacing: Theme.Spacing.md) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "trophy.fill")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.orange)
-                            Text("Más barata cerca")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .textCase(.uppercase)
-                                .tracking(0.5)
-                                .foregroundStyle(Theme.Colors.secondaryLabel)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(station.name)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.Colors.label)
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        if let price {
+                            Text("\(price.priceFormatted) €/L")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(Theme.Colors.cheapPrice)
                         }
-
-                        Text(station.name)
-                            .font(Theme.Fonts.headline)
-                            .foregroundStyle(Theme.Colors.label)
-                            .lineLimit(1)
-
-                        HStack(spacing: Theme.Spacing.sm) {
-                            if let price {
-                                Text("\(price.priceFormatted) €/L")
-                                    .font(Theme.Fonts.priceSmall)
-                                    .foregroundStyle(Theme.Colors.cheapPrice)
-                            }
-
-                            HStack(spacing: 4) {
-                                Image(systemName: "location.fill")
-                                    .font(.system(size: 9))
-                                Text(distance.distanceFormatted)
-                                    .font(Theme.Fonts.caption)
-                            }
+                        Text(distance.distanceFormatted)
+                            .font(.system(size: 12))
                             .foregroundStyle(Theme.Colors.secondaryLabel)
-                        }
-                    }
-
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: 6) {
-                        if let saving, saving > 0 {
-                            Text("-\(saving.savingFormatted)")
-                                .font(.system(.subheadline, design: .rounded, weight: .bold))
-                                .foregroundStyle(Theme.Colors.saving)
-
-                            HStack(spacing: 3) {
-                                Image(systemName: worthIt.icon)
-                                    .font(.system(size: 10))
-                                Text(worthIt.message)
-                                    .font(.system(size: 11))
-                            }
-                            .foregroundStyle(Theme.Colors.secondaryLabel)
-                        }
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.Colors.tertiaryLabel)
                     }
                 }
-                .padding(.leading, Theme.Spacing.md)
-                .padding(.trailing, Theme.Spacing.md)
+
+                Spacer(minLength: 4)
+
+                if let saving, saving > 0 {
+                    Text("-\(saving.savingFormatted)")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.Colors.saving)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.tertiaryLabel)
             }
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
-            .shadow(color: Theme.Shadows.cardShadow(colorScheme), radius: 16, y: 8)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+            .shadow(color: Theme.Shadows.cardShadow(colorScheme), radius: 12, y: 6)
         }
         .buttonStyle(.plain)
     }

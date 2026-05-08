@@ -45,7 +45,7 @@ final class UserPreferences {
         }
     }
 
-    static let availableRadii: [Double] = [2, 5, 10, 20, 30]
+    static let availableRadii: [Double] = [2, 5, 10, 20, 30, 50]
 
     private let defaults = UserDefaults.standard
     private let vehiclesKey = "vehicles_v2"
