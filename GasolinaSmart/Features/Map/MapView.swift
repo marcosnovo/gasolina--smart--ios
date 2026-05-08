@@ -15,7 +15,7 @@ struct MapView: View {
     @State private var visibleStations: [FuelStation] = []
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             mapContent
 
             VStack(spacing: 0) {
@@ -26,7 +26,9 @@ struct MapView: View {
                     loadingPill
                         .padding(.top, Theme.Spacing.sm)
                 }
+            }
 
+            VStack(spacing: 0) {
                 Spacer()
 
                 if let error = store.error, store.allStations.isEmpty {
@@ -37,6 +39,7 @@ struct MapView: View {
 
                 bottomContent
             }
+            .allowsHitTesting(true)
 
             if !locationManager.isAuthorized && !store.isLoading && store.allStations.isEmpty {
                 noLocationOverlay
@@ -385,7 +388,8 @@ struct MapView: View {
         visibleStations = store.nearbyStations(
             location: location,
             radiusKm: preferences.preferredRadiusKm,
-            fuelType: preferences.selectedFuelType
+            fuelType: preferences.selectedFuelType,
+            limit: 50
         )
     }
 

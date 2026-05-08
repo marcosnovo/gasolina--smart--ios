@@ -53,12 +53,15 @@ final class StationStore {
     func nearbyStations(
         location: CLLocation,
         radiusKm: Double,
-        fuelType: FuelType
+        fuelType: FuelType,
+        limit: Int? = nil
     ) -> [FuelStation] {
-        allStations
+        var result = allStations
             .filter { $0.price(for: fuelType) != nil }
             .filter { $0.distanceKm(from: location) <= radiusKm }
             .sorted { $0.distance(from: location) < $1.distance(from: location) }
+        if let limit { result = Array(result.prefix(limit)) }
+        return result
     }
 
     func cheapestStation(
