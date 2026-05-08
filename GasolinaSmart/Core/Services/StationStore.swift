@@ -12,6 +12,7 @@ final class StationStore {
     private(set) var cachedAveragePrice: Decimal?
     private var useBackend = true
     private var loadedRadiusKm: Double = 0
+    private var loadGeneration = 0
 
     func loadStations(near location: CLLocation? = nil, radiusKm: Double = 50) async {
         await loadFromBackend(location: location, radiusKm: radiusKm)
@@ -25,6 +26,9 @@ final class StationStore {
     // MARK: - Backend-first loading
 
     private func loadFromBackend(location: CLLocation?, radiusKm: Double, force: Bool = false) async {
+        loadGeneration += 1
+        let myGeneration = loadGeneration
+
         if allStations.isEmpty, let cached = await StationCache.shared.getStale() {
             allStations = cached
             lastUpdated = await StationCache.shared.get()?.timestamp
@@ -48,19 +52,25 @@ final class StationStore {
 
         do {
             if useBackend, await BackendAPIService.shared.isHealthy() {
-                try await loadFromBackendAPI(location: location, radiusKm: fetchRadius)
+                guard myGeneration == loadGeneration else { return }
+                try await loadFromBackendAPI(location: location, radiusKm: fetchRadius, generation: myGeneration)
             } else {
-                try await loadFromDirectAPI(location: location)
+                guard myGeneration == loadGeneration else { return }
+                try await loadFromDirectAPI(location: location, generation: myGeneration)
             }
+            guard myGeneration == loadGeneration else { return }
             loadedRadiusKm = fetchRadius
             isUsingCache = false
         } catch {
+            guard myGeneration == loadGeneration else { return }
             if useBackend {
                 do {
-                    try await loadFromDirectAPI(location: location)
+                    try await loadFromDirectAPI(location: location, generation: myGeneration)
+                    guard myGeneration == loadGeneration else { return }
                     loadedRadiusKm = 60
                     isUsingCache = false
                 } catch {
+                    guard myGeneration == loadGeneration else { return }
                     if allStations.isEmpty {
                         self.error = error.localizedDescription
                     }
@@ -69,16 +79,19 @@ final class StationStore {
                 self.error = error.localizedDescription
             }
         }
-        isLoading = false
+        if myGeneration == loadGeneration {
+            isLoading = false
+        }
     }
 
-    private func loadFromBackendAPI(location: CLLocation, radiusKm: Double) async throws {
+    private func loadFromBackendAPI(location: CLLocation, radiusKm: Double, generation: Int) async throws {
         let response = try await BackendAPIService.shared.fetchStationsNearby(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
             radiusKm: radiusKm,
             limit: 500
         )
+        guard generation == loadGeneration else { return }
         let stations = response.stations.map { $0.toFuelStation() }
         allStations = stations
         if let avg = response.average_price {
@@ -92,11 +105,12 @@ final class StationStore {
         await StationCache.shared.set(stations)
     }
 
-    private func loadFromDirectAPI(location: CLLocation) async throws {
+    private func loadFromDirectAPI(location: CLLocation, generation: Int) async throws {
         let result = try await FuelAPIService.shared.fetchStationsProgressively(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude
         )
+        guard generation == loadGeneration else { return }
         if allStations.isEmpty {
             allStations = result.nearby
         }
