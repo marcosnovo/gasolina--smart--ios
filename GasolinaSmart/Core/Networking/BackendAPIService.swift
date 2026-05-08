@@ -3,11 +3,7 @@ import Foundation
 actor BackendAPIService {
     static let shared = BackendAPIService()
 
-    #if DEBUG
-    private var baseURL = "http://localhost:3000"
-    #else
-    private var baseURL = "https://api.gasolinasmart.com"
-    #endif
+    private var baseURL = "https://gasolina-smart-ios-production.up.railway.app"
 
     private let session: URLSession
 
