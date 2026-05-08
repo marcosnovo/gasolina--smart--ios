@@ -11,21 +11,27 @@ final class StationStore {
     private(set) var isUsingCache = false
     private(set) var cachedAveragePrice: Decimal?
     private var useBackend = true
+    private var loadedRadiusKm: Double = 0
 
-    func loadStations(near location: CLLocation? = nil) async {
-        await loadFromBackend(location: location)
+    func loadStations(near location: CLLocation? = nil, radiusKm: Double = 50) async {
+        await loadFromBackend(location: location, radiusKm: radiusKm)
+    }
+
+    func reloadIfNeeded(location: CLLocation?, radiusKm: Double) async {
+        guard radiusKm > loadedRadiusKm else { return }
+        await loadFromBackend(location: location, radiusKm: radiusKm, force: true)
     }
 
     // MARK: - Backend-first loading
 
-    private func loadFromBackend(location: CLLocation?) async {
+    private func loadFromBackend(location: CLLocation?, radiusKm: Double, force: Bool = false) async {
         if allStations.isEmpty, let cached = await StationCache.shared.getStale() {
             allStations = cached
             lastUpdated = await StationCache.shared.get()?.timestamp
             isUsingCache = true
         }
 
-        if let age = await StationCache.shared.cacheAge(), age < 5 * 60 {
+        if !force, let age = await StationCache.shared.cacheAge(), age < 5 * 60 {
             isLoading = false
             return
         }
@@ -38,17 +44,21 @@ final class StationStore {
             return
         }
 
+        let fetchRadius = max(radiusKm + 10, 30)
+
         do {
             if useBackend, await BackendAPIService.shared.isHealthy() {
-                try await loadFromBackendAPI(location: location)
+                try await loadFromBackendAPI(location: location, radiusKm: fetchRadius)
             } else {
                 try await loadFromDirectAPI(location: location)
             }
+            loadedRadiusKm = fetchRadius
             isUsingCache = false
         } catch {
             if useBackend {
                 do {
                     try await loadFromDirectAPI(location: location)
+                    loadedRadiusKm = 60
                     isUsingCache = false
                 } catch {
                     if allStations.isEmpty {
@@ -62,12 +72,12 @@ final class StationStore {
         isLoading = false
     }
 
-    private func loadFromBackendAPI(location: CLLocation) async throws {
+    private func loadFromBackendAPI(location: CLLocation, radiusKm: Double) async throws {
         let response = try await BackendAPIService.shared.fetchStationsNearby(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
-            radiusKm: 60,
-            limit: 200
+            radiusKm: radiusKm,
+            limit: 500
         )
         let stations = response.stations.map { $0.toFuelStation() }
         allStations = stations

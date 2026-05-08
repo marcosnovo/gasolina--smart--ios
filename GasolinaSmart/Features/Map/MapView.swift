@@ -47,7 +47,10 @@ struct MapView: View {
         }
         .task {
             locationManager.requestLocation()
-            await store.loadStations(near: locationManager.location)
+            await store.loadStations(
+                near: locationManager.location,
+                radiusKm: preferences.preferredRadiusKm
+            )
         }
         .onChange(of: locationManager.location) { _, _ in
             updateVisibleStations()
@@ -55,8 +58,14 @@ struct MapView: View {
         .onChange(of: store.allStations) { _, _ in
             updateVisibleStations()
         }
-        .onChange(of: preferences.preferredRadiusKm) { _, _ in
+        .onChange(of: preferences.preferredRadiusKm) { _, newRadius in
             updateVisibleStations()
+            Task {
+                await store.reloadIfNeeded(
+                    location: locationManager.location,
+                    radiusKm: newRadius
+                )
+            }
         }
         .onChange(of: preferences.selectedFuelType) { _, _ in
             updateVisibleStations()
