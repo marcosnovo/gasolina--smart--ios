@@ -1,24 +1,32 @@
-//
-//  ContentView.swift
-//  GasolinaSmart
-//
-//  Created by Marcos on 08/05/2026.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @Environment(UserPreferences.self) private var preferences
+    @Environment(AppState.self) private var appState
 
-#Preview {
-    ContentView()
+    var body: some View {
+        if preferences.hasCompletedOnboarding {
+            mainTabView
+        } else {
+            OnboardingView()
+        }
+    }
+
+    private var mainTabView: some View {
+        @Bindable var state = appState
+
+        return TabView(selection: $state.selectedTab) {
+            Tab("Mapa", systemImage: "map.fill", value: .map) {
+                MapView()
+            }
+
+            Tab("Favoritos", systemImage: "heart.fill", value: .favorites) {
+                FavoritesView()
+            }
+
+            Tab("Ajustes", systemImage: "gearshape.fill", value: .settings) {
+                SettingsView()
+            }
+        }
+    }
 }

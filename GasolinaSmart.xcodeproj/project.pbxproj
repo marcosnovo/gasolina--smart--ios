@@ -29,9 +29,22 @@
 		6A5B983F2FADCE4500816B22 /* GasolinaSmartUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GasolinaSmartUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		6A5B98C62FADDEED00816B22 /* Exceptions for "GasolinaSmart" folder in "GasolinaSmart" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6A5B98272FADCE4400816B22 /* GasolinaSmart */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6A5B982A2FADCE4400816B22 /* GasolinaSmart */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6A5B98C62FADDEED00816B22 /* Exceptions for "GasolinaSmart" folder in "GasolinaSmart" target */,
+			);
 			path = GasolinaSmart;
 			sourceTree = "<group>";
 		};
@@ -400,6 +413,8 @@
 				DEVELOPMENT_TEAM = R2NTD25VWF;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GasolinaSmart/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Necesitamos tu ubicación para encontrar gasolineras cerca de ti y calcular distancias.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -432,6 +447,8 @@
 				DEVELOPMENT_TEAM = R2NTD25VWF;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GasolinaSmart/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Necesitamos tu ubicación para encontrar gasolineras cerca de ti y calcular distancias.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
