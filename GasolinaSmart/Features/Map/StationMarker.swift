@@ -6,34 +6,39 @@ struct StationMarker: View {
     let isFavorite: Bool
 
     var body: some View {
-        VStack(spacing: 2) {
-            ZStack {
+        ZStack {
+            if isCheapest {
                 Circle()
-                    .fill(markerColor)
-                    .frame(width: markerSize, height: markerSize)
+                    .fill(Theme.Colors.cheapPrice.opacity(0.2))
+                    .frame(width: 46, height: 46)
 
-                Image(systemName: "fuelpump.fill")
-                    .font(.system(size: isCheapest ? 14 : 10))
-                    .foregroundStyle(.white)
+                Circle()
+                    .fill(Theme.Colors.cheapGradient)
+                    .frame(width: 36, height: 36)
+                    .shadow(color: Theme.Colors.cheapPrice.opacity(0.4), radius: 6, y: 2)
+            } else {
+                Circle()
+                    .fill(Theme.Colors.accentGradient)
+                    .frame(width: 28, height: 28)
+                    .shadow(color: Theme.Shadows.medium, radius: 4, y: 2)
             }
-            .shadow(color: .black.opacity(0.2), radius: 3, y: 2)
-            .overlay(alignment: .topTrailing) {
-                if isFavorite {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(.pink)
-                        .offset(x: 4, y: -4)
-                }
+
+            Image(systemName: "fuelpump.fill")
+                .font(.system(size: isCheapest ? 15 : 11, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .overlay(alignment: .topTrailing) {
+            if isFavorite {
+                Circle()
+                    .fill(.white)
+                    .frame(width: 14, height: 14)
+                    .overlay(
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.pink)
+                    )
+                    .offset(x: isCheapest ? 4 : 2, y: isCheapest ? -4 : -2)
             }
         }
-    }
-
-    private var markerColor: Color {
-        if isCheapest { return Theme.Colors.cheapPrice }
-        return Color.accentColor
-    }
-
-    private var markerSize: CGFloat {
-        isCheapest ? 36 : 28
     }
 }

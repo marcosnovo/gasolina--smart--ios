@@ -11,30 +11,13 @@ struct SearchView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            Group {
                 if searchText.isEmpty {
-                    ContentUnavailableView(
-                        "Busca una ciudad o provincia",
-                        systemImage: "magnifyingglass",
-                        description: Text("Escribe el nombre de un municipio o provincia para ver gasolineras.")
-                    )
+                    searchPrompt
                 } else if results.isEmpty {
-                    ContentUnavailableView(
-                        "Sin resultados",
-                        systemImage: "fuelpump.slash",
-                        description: Text("No se encontraron gasolineras en \"\(searchText)\".")
-                    )
+                    noResults
                 } else {
-                    ForEach(results) { station in
-                        Button {
-                            appState.selectedStation = station
-                            appState.showStationDetail = true
-                            dismiss()
-                        } label: {
-                            StationSearchRow(station: station, fuelType: preferences.selectedFuelType)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    resultsList
                 }
             }
             .searchable(text: $searchText, prompt: "Municipio o provincia")
@@ -49,6 +32,82 @@ struct SearchView: View {
                 performSearch(newValue)
             }
         }
+    }
+
+    private var searchPrompt: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 32, weight: .light))
+                    .foregroundStyle(.tint.opacity(0.6))
+            }
+
+            VStack(spacing: Theme.Spacing.sm) {
+                Text("Busca por ciudad o provincia")
+                    .font(Theme.Fonts.headline)
+                Text("Encuentra gasolineras en cualquier\npunto de España.")
+                    .font(Theme.Fonts.subheadline)
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+            Spacer()
+        }
+    }
+
+    private var noResults: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "fuelpump.slash")
+                    .font(.system(size: 30, weight: .light))
+                    .foregroundStyle(.orange.opacity(0.6))
+            }
+
+            VStack(spacing: Theme.Spacing.sm) {
+                Text("Sin resultados")
+                    .font(Theme.Fonts.headline)
+                Text("No se encontraron gasolineras\nen \"\(searchText)\".")
+                    .font(Theme.Fonts.subheadline)
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+            Spacer()
+        }
+    }
+
+    private var resultsList: some View {
+        List {
+            Section {
+                ForEach(results) { station in
+                    Button {
+                        appState.selectedStation = station
+                        appState.showStationDetail = true
+                        dismiss()
+                    } label: {
+                        StationSearchRow(station: station, fuelType: preferences.selectedFuelType)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } header: {
+                Text("\(results.count) resultados · ordenados por precio")
+                    .font(.system(size: 11))
+                    .textCase(.none)
+            }
+        }
+        .listStyle(.plain)
     }
 
     private func performSearch(_ query: String) {
@@ -80,34 +139,37 @@ struct StationSearchRow: View {
     let fuelType: FuelType
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(station.name)
-                .font(Theme.Fonts.headline)
-                .lineLimit(1)
-
-            HStack(spacing: Theme.Spacing.sm) {
-                if let price = station.price(for: fuelType) {
-                    Text("\(price.priceFormatted) €/L")
-                        .font(Theme.Fonts.priceSmall)
-                        .foregroundStyle(Theme.Colors.cheapPrice)
-                }
-
-                Text(station.municipality)
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
-
-                Text("·")
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
-
-                Text(station.province)
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
+        HStack(spacing: Theme.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "fuelpump.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.tint)
             }
 
-            Text(station.address)
-                .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.tertiaryLabel)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(station.name)
+                    .font(Theme.Fonts.headline)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Label(station.municipality, systemImage: "mappin")
+                    Text(station.province)
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Colors.secondaryLabel)
                 .lineLimit(1)
+            }
+
+            Spacer()
+
+            if let price = station.price(for: fuelType) {
+                Text("\(price.priceFormatted)")
+                    .font(Theme.Fonts.priceSmall)
+                    .foregroundStyle(Theme.Colors.cheapPrice)
+            }
         }
         .padding(.vertical, 4)
     }

@@ -35,11 +35,31 @@ struct FavoritesView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("Sin favoritos", systemImage: "heart.slash")
-        } description: {
-            Text("Guarda tus gasolineras habituales para acceder rápidamente a sus precios y compararlas.")
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.pink.opacity(0.1))
+                    .frame(width: 100, height: 100)
+                Image(systemName: "heart")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundStyle(.pink.opacity(0.6))
+            }
+
+            VStack(spacing: Theme.Spacing.sm) {
+                Text("Sin favoritos")
+                    .font(Theme.Fonts.title)
+                Text("Guarda tus gasolineras habituales\npara acceder rápidamente a sus precios.")
+                    .font(Theme.Fonts.subheadline)
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+            Spacer()
         }
+        .padding(Theme.Spacing.xl)
     }
 
     private var stationsList: some View {
@@ -56,15 +76,19 @@ struct FavoritesView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
-                        preferences.toggleFavorite(station.id)
+                        withAnimation {
+                            preferences.toggleFavorite(station.id)
+                        }
                     } label: {
                         Label("Quitar", systemImage: "heart.slash")
                     }
                 }
             }
         }
+        .listStyle(.plain)
     }
 }
 
@@ -74,8 +98,17 @@ struct FavoriteStationRow: View {
     let userLocation: CLLocation?
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        HStack(spacing: Theme.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "fuelpump.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.tint)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
                 Text(station.name)
                     .font(Theme.Fonts.headline)
                     .lineLimit(1)
@@ -89,21 +122,17 @@ struct FavoriteStationRow: View {
                 }
                 .font(Theme.Fonts.caption)
                 .foregroundStyle(Theme.Colors.secondaryLabel)
-
-                Text("Actualizado: \(station.lastUpdated.formatted(.dateTime.day().month().hour().minute()))")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
             }
 
             Spacer()
 
             if let price = station.price(for: fuelType) {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(price.priceFormatted)")
+                    Text(price.priceFormatted)
                         .font(Theme.Fonts.priceSmall)
                     Text("€/L")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.Colors.tertiaryLabel)
                 }
             }
         }

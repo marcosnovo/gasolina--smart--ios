@@ -115,32 +115,36 @@ struct MapView: View {
             Button {
                 showSearch = true
             } label: {
-                HStack(spacing: Theme.Spacing.xs) {
+                HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
-                    Text("Buscar ciudad...")
-                        .font(Theme.Fonts.body)
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Theme.Colors.secondaryLabel)
+                    Text("Buscar ciudad...")
+                        .font(Theme.Fonts.subheadline)
+                        .foregroundStyle(Theme.Colors.tertiaryLabel)
                 }
-                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(.ultraThinMaterial)
                 .clipShape(Capsule())
+                .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
             }
             .buttonStyle(.plain)
 
             Spacer()
 
             Button { showFuelPicker = true } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: preferences.selectedFuelType.icon)
+                        .font(.system(size: 12))
                     Text(preferences.selectedFuelType.shortLabel)
-                        .font(Theme.Fonts.caption)
-                        .fontWeight(.semibold)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 9)
                 .background(.ultraThinMaterial)
                 .clipShape(Capsule())
+                .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
             }
             .buttonStyle(.plain)
         }
@@ -218,16 +222,17 @@ struct MapView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "circle.dashed")
+                    .font(.system(size: 12))
                 Text("\(Int(preferences.preferredRadiusKm)) km")
-                    .font(Theme.Fonts.caption)
-                    .fontWeight(.semibold)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 9)
             .background(.ultraThinMaterial)
             .clipShape(Capsule())
+            .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
         }
         .buttonStyle(.plain)
     }
@@ -240,9 +245,11 @@ struct MapView: View {
             locationManager.requestLocation()
         } label: {
             Image(systemName: "location.fill")
-                .padding(10)
+                .font(.system(size: 14, weight: .medium))
+                .padding(11)
                 .background(.ultraThinMaterial)
                 .clipShape(Circle())
+                .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
         }
         .buttonStyle(.plain)
     }
@@ -251,24 +258,24 @@ struct MapView: View {
         HStack(spacing: 4) {
             if store.isUsingCache {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.caption2)
+                    .font(.system(size: 9))
             }
             Text(store.dataFreshnessText)
-                .font(Theme.Fonts.caption)
+                .font(.system(size: 11))
             if !visibleStations.isEmpty {
                 Text("·")
                 Text("\(visibleStations.count) estaciones")
-                    .font(Theme.Fonts.caption)
+                    .font(.system(size: 11))
             }
             if !store.allStations.isEmpty && visibleStations.isEmpty && locationManager.location != nil {
                 Text("·")
                 Text("\(store.allStations.count) total")
-                    .font(Theme.Fonts.caption)
+                    .font(.system(size: 11))
             }
         }
         .foregroundStyle(Theme.Colors.tertiaryLabel)
         .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
         .background(.ultraThinMaterial)
         .clipShape(Capsule())
     }
@@ -303,24 +310,44 @@ struct MapView: View {
     }
 
     private func errorOverlay(_ message: String) -> some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.largeTitle)
-                .foregroundStyle(.orange)
-            Text("Error al cargar datos")
-                .font(Theme.Fonts.headline)
-            Text(message)
-                .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.secondaryLabel)
-                .multilineTextAlignment(.center)
-            Button("Reintentar") {
-                Task { await store.loadStations() }
+        VStack(spacing: Theme.Spacing.lg) {
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.orange)
             }
-            .buttonStyle(.borderedProminent)
+
+            VStack(spacing: Theme.Spacing.xs) {
+                Text("Error al cargar datos")
+                    .font(Theme.Fonts.headline)
+                Text(message)
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button {
+                Task { await store.loadStations() }
+            } label: {
+                Text("Reintentar")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, Theme.Spacing.xl)
+                    .padding(.vertical, 10)
+                    .background(Theme.Colors.accentGradient)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
-        .padding(Theme.Spacing.xl)
+        .padding(.horizontal, Theme.Spacing.xl)
+        .padding(.vertical, Theme.Spacing.lg)
+        .frame(maxWidth: 280)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
     }
 
     private var noDataOverlay: some View {
@@ -353,24 +380,44 @@ struct MapView: View {
     }
 
     private var noLocationOverlay: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "location.slash")
-                .font(.largeTitle)
-                .foregroundStyle(Theme.Colors.secondaryLabel)
-            Text("Ubicación no disponible")
-                .font(Theme.Fonts.headline)
-            Text("Activa la ubicación en Ajustes o usa la búsqueda para encontrar gasolineras.")
-                .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.secondaryLabel)
-                .multilineTextAlignment(.center)
-            Button("Buscar por ciudad") {
-                showSearch = true
+        VStack(spacing: Theme.Spacing.lg) {
+            ZStack {
+                Circle()
+                    .fill(Color.secondary.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "location.slash.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
             }
-            .buttonStyle(.borderedProminent)
+
+            VStack(spacing: Theme.Spacing.xs) {
+                Text("Ubicación no disponible")
+                    .font(Theme.Fonts.headline)
+                Text("Activa la ubicación en Ajustes o\nbusca por ciudad.")
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button {
+                showSearch = true
+            } label: {
+                Text("Buscar por ciudad")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, Theme.Spacing.xl)
+                    .padding(.vertical, 10)
+                    .background(Theme.Colors.accentGradient)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
-        .padding(Theme.Spacing.xl)
+        .padding(.horizontal, Theme.Spacing.xl)
+        .padding(.vertical, Theme.Spacing.lg)
+        .frame(maxWidth: 280)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
     }
 
     private var cheapestStation: FuelStation? {
