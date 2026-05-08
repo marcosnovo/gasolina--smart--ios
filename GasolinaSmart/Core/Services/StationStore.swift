@@ -10,10 +10,15 @@ final class StationStore {
     private(set) var isUsingCache = false
 
     func loadStations() async {
-        if let cached = await StationCache.shared.getValid() {
+        if allStations.isEmpty, let cached = await StationCache.shared.getStale() {
             allStations = cached
             lastUpdated = await StationCache.shared.get()?.timestamp
             isUsingCache = true
+        }
+
+        if let age = await StationCache.shared.cacheAge(), age < 15 * 60 {
+            isLoading = false
+            return
         }
 
         isLoading = allStations.isEmpty
@@ -25,19 +30,12 @@ final class StationStore {
             await StationCache.shared.set(stations)
             lastUpdated = Date()
             isUsingCache = false
-            isLoading = false
         } catch {
             if allStations.isEmpty {
-                if let stale = await StationCache.shared.getStale() {
-                    allStations = stale
-                    lastUpdated = await StationCache.shared.get()?.timestamp
-                    isUsingCache = true
-                } else {
-                    self.error = error.localizedDescription
-                }
+                self.error = error.localizedDescription
             }
-            isLoading = false
         }
+        isLoading = false
     }
 
     func nearbyStations(
@@ -94,10 +92,11 @@ final class StationStore {
     var dataFreshnessText: String {
         guard let lastUpdated else { return "Sin datos" }
         let minutes = Int(Date().timeIntervalSince(lastUpdated) / 60)
-        if minutes < 1 { return "Actualizado ahora" }
-        if minutes < 60 { return "Hace \(minutes) min" }
+        let prefix = isLoading ? "Actualizando... · " : ""
+        if minutes < 1 { return "\(prefix)Actualizado ahora" }
+        if minutes < 60 { return "\(prefix)Hace \(minutes) min" }
         let hours = minutes / 60
-        return "Hace \(hours) h"
+        return "\(prefix)Hace \(hours) h"
     }
 }
 
