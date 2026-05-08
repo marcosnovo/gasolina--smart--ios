@@ -60,6 +60,7 @@ struct MapView: View {
         }
         .onChange(of: preferences.preferredRadiusKm) { _, newRadius in
             updateVisibleStations()
+            zoomToRadius(newRadius)
             Task {
                 await store.reloadIfNeeded(
                     location: locationManager.location,
@@ -398,8 +399,21 @@ struct MapView: View {
             location: location,
             radiusKm: preferences.preferredRadiusKm,
             fuelType: preferences.selectedFuelType,
-            limit: 50
+            limit: 150
         )
+    }
+
+    private func zoomToRadius(_ radiusKm: Double) {
+        guard let location = locationManager.location else { return }
+        let meters = radiusKm * 1000
+        let region = MKCoordinateRegion(
+            center: location.coordinate,
+            latitudinalMeters: meters * 2.2,
+            longitudinalMeters: meters * 2.2
+        )
+        withAnimation(.easeInOut(duration: 0.4)) {
+            cameraPosition = .region(region)
+        }
     }
 
     private func openAppleMaps(station: FuelStation) {
