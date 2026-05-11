@@ -34,44 +34,58 @@ struct RadarPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let price {
+            if let saving {
+                Text(saving.savingFormatted)
+                    .font(.system(size: 48, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color(.label))
+                    .contentTransition(.numericText())
+                    .padding(.bottom, 2)
+
+                Text("vs media de la zona en tu depósito")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .padding(.bottom, 10)
+            } else if let price {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(price.priceFormatted)
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .font(.system(size: 48, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(isDark ? Theme.Colors.accent : Color(.label))
                         .contentTransition(.numericText())
-
                     Text("€/L")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color(.tertiaryLabel))
                 }
-                .padding(.bottom, 6)
+                .padding(.bottom, 10)
             }
 
             Button(action: onTap) {
-                Text("\(station.name.uppercased()) · \(distance.distanceFormatted)")
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(0.8)
+                Text("\(station.name) · \(distance.distanceFormatted)")
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color(.secondaryLabel))
                     .lineLimit(1)
             }
             .buttonStyle(.plain)
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
+
+            if saving != nil, let price {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(price.priceFormatted)
+                        .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Color(.label))
+                    Text("€/L")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+                .padding(.bottom, 8)
+            }
 
             HStack(spacing: 5) {
                 Image(systemName: opportunity.icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(opportunity.color)
-
-                if let saving {
-                    Text("\(opportunity.label) · Ahorras \(saving.savingFormatted)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(opportunity.color)
-                } else {
-                    Text(opportunity.label)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(opportunity.color)
-                }
+                Text(opportunity.label)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(opportunity.color)
             }
             .padding(.bottom, 16)
 

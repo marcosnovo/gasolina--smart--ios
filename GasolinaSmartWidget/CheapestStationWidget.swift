@@ -101,7 +101,7 @@ struct CheapestStationProvider: TimelineProvider {
 
                 // Station pin
                 let stationPoint = snapshot.point(for: stationCoord)
-                let pinColor = UIColor(red: 0.13, green: 0.61, blue: 0.35, alpha: 1)
+                let pinColor = UIColor(red: 0.054, green: 0.486, blue: 0.482, alpha: 1)
                 ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: pinColor.withAlphaComponent(0.4).cgColor)
                 ctx.cgContext.setFillColor(pinColor.cgColor)
                 ctx.cgContext.fillEllipse(in: CGRect(

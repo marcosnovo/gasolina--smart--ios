@@ -127,8 +127,7 @@ final class StationStore {
         limit: Int? = nil
     ) -> [FuelStation] {
         var result = allStations
-            .filter { $0.price(for: fuelType) != nil }
-            .filter { $0.distanceKm(from: location) <= radiusKm }
+            .filter { $0.price(for: fuelType) != nil && $0.distanceKm(from: location) <= radiusKm }
             .sorted { $0.distance(from: location) < $1.distance(from: location) }
         if let limit { result = Array(result.prefix(limit)) }
         return result
@@ -139,13 +138,9 @@ final class StationStore {
         radiusKm: Double,
         fuelType: FuelType
     ) -> FuelStation? {
-        nearbyStations(location: location, radiusKm: radiusKm, fuelType: fuelType)
-            .sorted {
-                let p1 = $0.price(for: fuelType) ?? Decimal.greatestFiniteMagnitude
-                let p2 = $1.price(for: fuelType) ?? Decimal.greatestFiniteMagnitude
-                return p1 < p2
-            }
-            .first
+        allStations
+            .filter { $0.price(for: fuelType) != nil && $0.distanceKm(from: location) <= radiusKm }
+            .min { ($0.price(for: fuelType) ?? .greatestFiniteMagnitude) < ($1.price(for: fuelType) ?? .greatestFiniteMagnitude) }
     }
 
     func averagePrice(
@@ -153,11 +148,11 @@ final class StationStore {
         radiusKm: Double,
         fuelType: FuelType
     ) -> Decimal? {
-        let stations = nearbyStations(location: location, radiusKm: radiusKm, fuelType: fuelType)
-        let prices = stations.compactMap { $0.price(for: fuelType) }
+        let prices = allStations
+            .filter { $0.price(for: fuelType) != nil && $0.distanceKm(from: location) <= radiusKm }
+            .compactMap { $0.price(for: fuelType) }
         guard !prices.isEmpty else { return cachedAveragePrice }
-        let sum = prices.reduce(Decimal.zero, +)
-        return sum / Decimal(prices.count)
+        return prices.reduce(Decimal.zero, +) / Decimal(prices.count)
     }
 
     func estimatedSaving(

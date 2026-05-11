@@ -14,16 +14,15 @@ enum Theme {
         static let secondaryLabel = Color(.secondaryLabel)
         static let tertiaryLabel = Color(.tertiaryLabel)
 
-        // Legacy aliases used across codebase
-        static let deepBackground = Color(.systemBackground)
-        static let surface = Color(.secondarySystemBackground)
-        static let surfaceElevated = Color(.tertiarySystemBackground)
+        // Legacy aliases — prefer semantic names above
         static let cardBackground = Color(.secondarySystemBackground)
-        static let ivory = Color(.label)
 
-        // Accent — mint green, used for primary CTA and highlights
-        static let accent = Color(red: 0.13, green: 0.61, blue: 0.35)
-        static let amber = Color(red: 0.13, green: 0.61, blue: 0.35)
+        // Accent — blue-teal, adaptive light/dark
+        static let accent = Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.121, green: 0.639, blue: 0.620, alpha: 1)
+                : UIColor(red: 0.054, green: 0.486, blue: 0.482, alpha: 1)
+        })
 
         // Semantic pricing
         static let goodPrice = Color.green
@@ -35,14 +34,8 @@ enum Theme {
 
         // Markers
         static let markerDefault = Color(.tertiaryLabel)
-        static let markerBest = Color(red: 0.13, green: 0.61, blue: 0.35)
+        static let markerBest = accent
 
-        // Gradients — flat, no visual gradients
-        static let amberGlow = LinearGradient(colors: [.blue, .blue], startPoint: .leading, endPoint: .trailing)
-        static let accentGradient = amberGlow
-        static let cheapGradient = LinearGradient(colors: [.green, .green], startPoint: .leading, endPoint: .trailing)
-        static let surfaceGradient = LinearGradient(colors: [Color(.systemBackground), Color(.systemBackground)], startPoint: .top, endPoint: .bottom)
-        static let priceCardGradient = LinearGradient(colors: [.clear, .clear], startPoint: .top, endPoint: .bottom)
     }
 
     enum Fonts {
@@ -55,10 +48,10 @@ enum Theme {
         static let caption = Font.caption
         static let mono = Font.system(.caption2, design: .monospaced)
 
-        static let priceHero = Font.system(size: 48, weight: .bold, design: .rounded)
-        static let priceLarge = Font.system(size: 36, weight: .bold, design: .rounded)
-        static let price = Font.system(.title, design: .rounded, weight: .bold)
-        static let priceSmall = Font.system(.headline, design: .rounded, weight: .semibold)
+        static let priceHero = Font.system(size: 48, weight: .bold, design: .rounded).monospacedDigit()
+        static let priceLarge = Font.system(size: 36, weight: .bold, design: .rounded).monospacedDigit()
+        static let price = Font.system(.title, design: .rounded, weight: .bold).monospacedDigit()
+        static let priceSmall = Font.system(.headline, design: .rounded, weight: .semibold).monospacedDigit()
 
         static let sectionLabel = Font.system(size: 11, weight: .semibold)
         static let radarLabel = Font.system(size: 12, weight: .medium)
@@ -82,14 +75,6 @@ enum Theme {
         static let xxl: CGFloat = 16
     }
 
-    enum Shadows {
-        static func card(_ scheme: ColorScheme) -> some View { EmptyView() }
-        static func cardShadow(_ scheme: ColorScheme) -> Color { .clear }
-        static let soft = Color.clear
-        static let medium = Color.clear
-        static let elevated = Color.clear
-        static let glow = Color.clear
-    }
 }
 
 // MARK: - Price Opportunity
@@ -130,26 +115,32 @@ enum PriceOpportunity {
 
 // MARK: - Formatters
 
+private let priceFormatter: NumberFormatter = {
+    let f = NumberFormatter()
+    f.numberStyle = .decimal
+    f.minimumFractionDigits = 3
+    f.maximumFractionDigits = 3
+    f.decimalSeparator = ","
+    return f
+}()
+
+private let currencyFormatter: NumberFormatter = {
+    let f = NumberFormatter()
+    f.numberStyle = .currency
+    f.currencyCode = "EUR"
+    f.currencySymbol = "€"
+    f.minimumFractionDigits = 2
+    f.maximumFractionDigits = 2
+    return f
+}()
+
 extension Decimal {
     var priceFormatted: String {
-        let number = NSDecimalNumber(decimal: self)
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 3
-        formatter.maximumFractionDigits = 3
-        formatter.decimalSeparator = ","
-        return formatter.string(from: number) ?? "\(self)"
+        priceFormatter.string(from: NSDecimalNumber(decimal: self)) ?? "\(self)"
     }
 
     var savingFormatted: String {
-        let number = NSDecimalNumber(decimal: self)
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "EUR"
-        formatter.currencySymbol = "€"
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: number) ?? "\(self) €"
+        currencyFormatter.string(from: NSDecimalNumber(decimal: self)) ?? "\(self) €"
     }
 }
 
@@ -162,24 +153,3 @@ extension Double {
     }
 }
 
-struct PremiumCard: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
-    }
-}
-
-struct SectionCard: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(Theme.Spacing.md)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
-    }
-}
-
-extension View {
-    func premiumCard() -> some View { modifier(PremiumCard()) }
-    func sectionCard() -> some View { modifier(SectionCard()) }
-}

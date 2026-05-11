@@ -155,10 +155,14 @@ struct MapLibreMapView: UIViewRepresentable {
 
         private func fitBounds(on mapView: MLNMapView, coordinates: [CLLocationCoordinate2D]) {
             guard coordinates.count >= 2 else { return }
-            let minLat = coordinates.map(\.latitude).min()!
-            let maxLat = coordinates.map(\.latitude).max()!
-            let minLon = coordinates.map(\.longitude).min()!
-            let maxLon = coordinates.map(\.longitude).max()!
+            var minLat = Double.infinity, maxLat = -Double.infinity
+            var minLon = Double.infinity, maxLon = -Double.infinity
+            for coord in coordinates {
+                minLat = min(minLat, coord.latitude)
+                maxLat = max(maxLat, coord.latitude)
+                minLon = min(minLon, coord.longitude)
+                maxLon = max(maxLon, coord.longitude)
+            }
 
             let bounds = MLNCoordinateBounds(
                 sw: CLLocationCoordinate2D(latitude: minLat, longitude: minLon),
@@ -220,7 +224,11 @@ class StationAnnotationView: MLNAnnotationView {
     private static let tailSize: CGFloat = 8
     private static let totalHeight: CGFloat = pinSize + tailSize - 2
     private static let frameSize: CGFloat = 48
-    private static let mintGreen = UIColor(red: 0.13, green: 0.61, blue: 0.35, alpha: 1)
+    private static let accentTeal = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.121, green: 0.639, blue: 0.620, alpha: 1)
+            : UIColor(red: 0.054, green: 0.486, blue: 0.482, alpha: 1)
+    }
 
     override init(reuseIdentifier: String?) {
         super.init(reuseIdentifier: reuseIdentifier)
@@ -242,7 +250,7 @@ class StationAnnotationView: MLNAnnotationView {
             height: ringSize
         )
         pulseRing.layer.cornerRadius = ringSize / 2
-        pulseRing.backgroundColor = Self.mintGreen.withAlphaComponent(0.25)
+        pulseRing.backgroundColor = Self.accentTeal.withAlphaComponent(0.25)
         pulseRing.isHidden = true
         addSubview(pulseRing)
 
@@ -290,8 +298,8 @@ class StationAnnotationView: MLNAnnotationView {
 
     func configure(isCheapest: Bool, isFavorite: Bool) {
         if isCheapest {
-            pinBody.backgroundColor = Self.mintGreen
-            pinTail.backgroundColor = Self.mintGreen
+            pinBody.backgroundColor = Self.accentTeal
+            pinTail.backgroundColor = Self.accentTeal
             iconView.image = UIImage(systemName: "fuelpump.fill")
             iconView.tintColor = .white
             pinBody.transform = .init(scaleX: 1.15, y: 1.15)

@@ -131,7 +131,17 @@ final class UserPreferences {
         favoriteStationIds.contains(stationId)
     }
 
+    private var saveWork: DispatchWorkItem?
+
     private func save() {
+        saveWork?.cancel()
+        saveWork = DispatchWorkItem { [weak self] in
+            self?.persistToDisk()
+        }
+        DispatchQueue.main.async(execute: saveWork!)
+    }
+
+    private func persistToDisk() {
         if let data = try? JSONEncoder().encode(vehicles) {
             defaults.set(data, forKey: vehiclesKey)
         }

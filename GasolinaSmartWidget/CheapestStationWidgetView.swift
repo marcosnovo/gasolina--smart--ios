@@ -1,7 +1,7 @@
 import SwiftUI
 import WidgetKit
 
-private let widgetAccent = Color(red: 0.13, green: 0.61, blue: 0.35)
+private let widgetAccent = Color(red: 0.054, green: 0.486, blue: 0.482)
 
 struct CheapestStationWidgetView: View {
     let entry: CheapestStationEntry
@@ -65,7 +65,7 @@ private struct SmallWidgetView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text(data.priceFormatted)
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundStyle(Color(.label))
                         Text("€/L")
                             .font(.system(size: 9, weight: .semibold))
@@ -121,7 +121,7 @@ private struct MediumWidgetView: View {
                 VStack(alignment: .trailing, spacing: 1) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text(data.priceFormatted)
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundStyle(Color(.label))
                         Text("€/L")
                             .font(.system(size: 10, weight: .semibold))

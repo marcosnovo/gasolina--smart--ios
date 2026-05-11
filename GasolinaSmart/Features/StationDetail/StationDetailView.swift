@@ -108,7 +108,7 @@ struct StationDetailView: View {
             if let selectedPrice {
                 HStack(alignment: .firstTextBaseline) {
                     Text(selectedPrice.priceFormatted)
-                        .font(.system(size: 52, weight: .bold, design: .rounded))
+                        .font(.system(size: 52, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(Theme.Colors.accent)
 
                     Text("€/L")
@@ -224,7 +224,7 @@ struct StationDetailView: View {
                 Spacer()
 
                 Text(value)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(valueColor ?? (isDark ? .white : Color(.label)))
             }
             .padding(.horizontal, 16)
@@ -268,7 +268,7 @@ struct StationDetailView: View {
                             Spacer()
 
                             Text("\(price.priceFormatted) €/L")
-                                .font(.system(size: 15, weight: isSelected ? .bold : .regular, design: .rounded))
+                                .font(.system(size: 15, weight: isSelected ? .bold : .regular, design: .rounded).monospacedDigit())
                                 .foregroundStyle(isSelected ? Theme.Colors.accent : (isDark ? Color(white: 0.5) : Color(.secondaryLabel)))
                         }
                         .padding(.horizontal, 16)
