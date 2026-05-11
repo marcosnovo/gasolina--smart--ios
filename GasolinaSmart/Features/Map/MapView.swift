@@ -1,5 +1,5 @@
 import SwiftUI
-import MapKit
+import CoreLocation
 
 struct MapView: View {
     @Environment(StationStore.self) private var store
@@ -7,64 +7,88 @@ struct MapView: View {
     @Environment(LocationManager.self) private var locationManager
     @Environment(AppState.self) private var appState
 
-    @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
-    @State private var selectedStationId: String?
     @State private var showFuelPicker = false
-    @State private var showSearch = false
     @State private var showRadiusPicker = false
+
     @State private var visibleStations: [FuelStation] = []
+    @State private var cachedCheapest: FuelStation?
+    @State private var cachedAveragePrice: Decimal?
+
+    @State private var centerOnUserCounter = 0
+    @State private var zoomRadiusCounter = 0
+    @State private var showNavigationPicker = false
 
     var body: some View {
-        ZStack(alignment: .top) {
-            mapContent
+        ZStack {
+            MapLibreMapView(
+                stations: visibleStations,
+                cheapestId: cachedCheapest?.id,
+                favoriteIds: preferences.favoriteStationIds,
+                onStationTapped: { station in
+                    appState.selectedStation = station
+                    appState.showStationDetail = true
+                },
+                centerOnUserCounter: centerOnUserCounter,
+                zoomRadiusKm: preferences.preferredRadiusKm,
+                zoomRadiusCounter: zoomRadiusCounter,
+                isDarkMode: preferences.appearance == .dark
+            )
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
-                    .padding(.top, Theme.Spacing.sm)
+                    .padding(.top, Theme.Spacing.xs)
 
                 if store.isLoading && store.allStations.isEmpty {
                     loadingPill
                         .padding(.top, Theme.Spacing.sm)
                 }
-            }
 
-            VStack(spacing: 0) {
                 Spacer()
 
                 if let error = store.error, store.allStations.isEmpty {
-                    errorBanner(error)
+                    errorBar(error)
                         .padding(.horizontal, Theme.Spacing.md)
                         .padding(.bottom, Theme.Spacing.sm)
                 }
 
                 bottomContent
             }
-            .allowsHitTesting(true)
 
             if !locationManager.isAuthorized && !store.isLoading && store.allStations.isEmpty {
                 noLocationOverlay
             }
         }
         .task {
+            await store.loadCacheImmediately()
+            updateVisibleStations()
             locationManager.requestLocation()
             await store.loadStations(
                 near: locationManager.location,
                 radiusKm: preferences.preferredRadiusKm
             )
         }
-        .onChange(of: locationManager.location) { _, _ in
+        .onChange(of: locationManager.location) { _, newLocation in
             updateVisibleStations()
+            if let newLocation {
+                Task {
+                    await store.loadStations(
+                        near: newLocation,
+                        radiusKm: preferences.preferredRadiusKm
+                    )
+                }
+            }
         }
         .onChange(of: store.allStations) { _, _ in
             updateVisibleStations()
         }
-        .onChange(of: preferences.preferredRadiusKm) { _, newRadius in
+        .onChange(of: preferences.preferredRadiusKm) { _, _ in
             updateVisibleStations()
-            zoomToRadius(newRadius)
+            zoomRadiusCounter += 1
             Task {
                 await store.reloadIfNeeded(
                     location: locationManager.location,
-                    radiusKm: newRadius
+                    radiusKm: preferences.preferredRadiusKm
                 )
             }
         }
@@ -86,131 +110,86 @@ struct MapView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showSearch) {
-            SearchView()
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
         .sheet(isPresented: $showRadiusPicker) {
             RadiusPickerSheet()
                 .presentationDetents([.height(280)])
                 .presentationDragIndicator(.visible)
         }
-    }
-
-    // MARK: - Map
-
-    private var mapContent: some View {
-        Map(position: $cameraPosition, selection: $selectedStationId) {
-            UserAnnotation()
-
-            ForEach(visibleStations) { station in
-                let isCheapest = cheapestStation?.id == station.id
-                let price = station.price(for: preferences.selectedFuelType)
-
-                Annotation(
-                    price.map { "\($0.priceFormatted) €" } ?? "",
-                    coordinate: station.coordinate,
-                    anchor: .bottom
-                ) {
-                    StationMarker(
-                        price: price,
-                        isCheapest: isCheapest,
-                        isFavorite: preferences.isFavorite(station.id)
-                    )
-                    .onTapGesture {
-                        appState.selectedStation = station
-                        appState.showStationDetail = true
-                    }
-                }
-                .tag(station.id)
+        .sheet(isPresented: $showNavigationPicker) {
+            if let cheapest = cachedCheapest {
+                NavigationPickerSheet(station: cheapest)
+                    .presentationDetents([.height(180)])
+                    .presentationDragIndicator(.visible)
             }
         }
-        .mapControls {
-            MapCompass()
-            MapScaleView()
-        }
-        .mapStyle(.standard(pointsOfInterest: .excludingAll))
     }
 
     // MARK: - Top Bar
 
     private var topBar: some View {
-        HStack(spacing: 8) {
-            Button {
-                showSearch = true
-            } label: {
+        HStack(spacing: 10) {
+            Button { showFuelPicker = true } label: {
+                HStack(spacing: 8) {
+                    VehicleAvatar(vehicle: preferences.selectedVehicle, size: 30)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(preferences.selectedVehicle.name)
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                        Text(preferences.selectedFuelType.shortLabel)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+                }
+                .padding(.trailing, 12)
+                .padding(.leading, 5)
+                .padding(.vertical, 5)
+                .background(.regularMaterial)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Button { showRadiusPicker = true } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: "scope")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
-                    Text("Buscar ciudad...")
-                        .font(.system(size: 14, design: .rounded))
-                        .foregroundStyle(Theme.Colors.tertiaryLabel)
+                    Text("\(Int(preferences.preferredRadiusKm)) km")
+                        .font(Theme.Fonts.pillLabel)
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(.ultraThinMaterial)
+                .padding(.vertical, 12)
+                .background(.regularMaterial)
                 .clipShape(Capsule())
-                .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
             }
             .buttonStyle(.plain)
 
             Spacer()
 
-            Button { showRadiusPicker = true } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "circle.dashed")
-                        .font(.system(size: 11))
-                    Text("\(Int(preferences.preferredRadiusKm)) km")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 9)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
-            }
-            .buttonStyle(.plain)
-
-            Button { showFuelPicker = true } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: preferences.selectedFuelType.icon)
-                        .font(.system(size: 11))
-                    Text(preferences.selectedFuelType.shortLabel)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 9)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
+            Button {
+                centerOnUserCounter += 1
+                locationManager.requestLocation()
+            } label: {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.Colors.accent)
+                    .frame(width: 44, height: 44)
+                    .background(.regularMaterial)
+                    .clipShape(Circle())
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, Theme.Spacing.md)
     }
 
-    // MARK: - Bottom Content
+    // MARK: - Bottom
 
     private var bottomContent: some View {
         VStack(spacing: Theme.Spacing.sm) {
-            HStack {
-                Spacer()
-                locationButton
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-
-            if let cheapest = cheapestStation,
+            if let cheapest = cachedCheapest,
                let location = locationManager.location {
-                CheapestStationCard(
+                RadarPanel(
                     station: cheapest,
                     fuelType: preferences.selectedFuelType,
-                    averagePrice: store.averagePrice(
-                        location: location,
-                        radiusKm: preferences.preferredRadiusKm,
-                        fuelType: preferences.selectedFuelType
-                    ),
+                    averagePrice: cachedAveragePrice,
                     tankLiters: preferences.tankSizeLiters,
                     distance: cheapest.distanceKm(from: location),
                     onTap: {
@@ -218,13 +197,27 @@ struct MapView: View {
                         appState.showStationDetail = true
                     },
                     onNavigate: {
-                        openAppleMaps(station: cheapest)
+                        showNavigationPicker = true
                     }
                 )
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
                 .padding(.horizontal, Theme.Spacing.md)
             } else if locationManager.isAuthorized && locationManager.location != nil
                         && !store.allStations.isEmpty && visibleStations.isEmpty {
-                noNearbyCard
+                VStack(spacing: 4) {
+                    Text("Sin gasolineras en \(Int(preferences.preferredRadiusKm)) km")
+                        .font(Theme.Fonts.subheadline)
+                        .fontWeight(.medium)
+                    Text("Amplía el radio de búsqueda")
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(Theme.Spacing.md)
+                .frame(maxWidth: .infinity)
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
+                .padding(.horizontal, Theme.Spacing.md)
             }
 
             freshnessLabel
@@ -232,41 +225,17 @@ struct MapView: View {
         }
     }
 
-    // MARK: - Supporting Views
-
-    private var noNearbyCard: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: "fuelpump.slash")
-                .font(.title2)
-                .foregroundStyle(Theme.Colors.secondaryLabel)
-            Text("No hay gasolineras en \(Int(preferences.preferredRadiusKm)) km")
-                .font(Theme.Fonts.headline)
-            Text("Prueba a ampliar el radio de búsqueda")
-                .font(Theme.Fonts.caption)
-                .foregroundStyle(Theme.Colors.secondaryLabel)
+    private var loadingPill: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Cargando gasolineras...")
+                .font(Theme.Fonts.pillLabel)
+                .foregroundStyle(.secondary)
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
-        .padding(.horizontal, Theme.Spacing.md)
-    }
-
-    private var locationButton: some View {
-        Button {
-            withAnimation {
-                cameraPosition = .userLocation(fallback: .automatic)
-            }
-            locationManager.requestLocation()
-        } label: {
-            Image(systemName: "location.fill")
-                .font(.system(size: 14, weight: .medium))
-                .padding(11)
-                .background(.ultraThinMaterial)
-                .clipShape(Circle())
-                .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
-        }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial)
+        .clipShape(Capsule())
     }
 
     private var freshnessLabel: some View {
@@ -276,150 +245,116 @@ struct MapView: View {
                     .font(.system(size: 9))
             }
             Text(store.dataFreshnessText)
-                .font(.system(size: 11))
+                .font(Theme.Fonts.caption)
             if !visibleStations.isEmpty {
-                Text("·")
-                Text("\(visibleStations.count) estaciones")
-                    .font(.system(size: 11))
-            }
-            if !store.allStations.isEmpty && visibleStations.isEmpty && locationManager.location != nil {
-                Text("·")
-                Text("\(store.allStations.count) total")
-                    .font(.system(size: 11))
+                Text("· \(visibleStations.count) estaciones")
+                    .font(Theme.Fonts.caption)
             }
         }
-        .foregroundStyle(Theme.Colors.tertiaryLabel)
+        .foregroundStyle(Color(.tertiaryLabel))
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .background(.ultraThinMaterial)
+        .background(.regularMaterial)
         .clipShape(Capsule())
     }
 
-    private var loadingPill: some View {
+    private func errorBar(_ message: String) -> some View {
         HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-            Text("Cargando gasolineras...")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
-        .transition(.move(edge: .top).combined(with: .opacity))
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .foregroundStyle(.orange)
             Text("Error al cargar")
-                .font(.system(size: 13, weight: .medium))
+                .font(Theme.Fonts.subheadline)
+                .foregroundStyle(.secondary)
             Spacer()
-            Button {
+            Button("Reintentar") {
                 Task { await store.loadStations(near: locationManager.location) }
-            } label: {
-                Text("Reintentar")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.accentColor)
-                    .clipShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .font(Theme.Fonts.pillLabel)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
-        .shadow(color: Theme.Shadows.soft, radius: 8, y: 4)
     }
 
     private var noLocationOverlay: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            ZStack {
-                Circle()
-                    .fill(Color.secondary.opacity(0.1))
-                    .frame(width: 80, height: 80)
-                Image(systemName: "location.slash.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
-            }
-
-            VStack(spacing: Theme.Spacing.xs) {
-                Text("Ubicación no disponible")
-                    .font(Theme.Fonts.headline)
-                Text("Activa la ubicación en Ajustes o\nbusca por ciudad.")
-                    .font(Theme.Fonts.caption)
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
-                    .multilineTextAlignment(.center)
-            }
-
-            Button {
-                showSearch = true
-            } label: {
+        VStack(spacing: Theme.Spacing.md) {
+            Text("Ubicación no disponible")
+                .font(Theme.Fonts.headline)
+            Text("Activa la ubicación en Ajustes o busca por ciudad.")
+                .font(Theme.Fonts.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button { appState.selectedTab = .search } label: {
                 Text("Buscar por ciudad")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, Theme.Spacing.xl)
-                    .padding(.vertical, 10)
-                    .background(Theme.Colors.accentGradient)
-                    .clipShape(Capsule())
+                    .font(Theme.Fonts.headline)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.Colors.accent)
         }
-        .padding(.horizontal, Theme.Spacing.xl)
-        .padding(.vertical, Theme.Spacing.lg)
+        .padding(Theme.Spacing.xl)
         .frame(maxWidth: 280)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
     }
 
     // MARK: - Helpers
 
-    private var cheapestStation: FuelStation? {
-        guard let location = locationManager.location else { return nil }
-        return store.cheapestStation(
-            location: location,
-            radiusKm: preferences.preferredRadiusKm,
-            fuelType: preferences.selectedFuelType
-        )
-    }
-
     private func updateVisibleStations() {
         guard let location = locationManager.location else {
             visibleStations = []
+            cachedCheapest = nil
+            cachedAveragePrice = nil
             return
         }
-        visibleStations = store.nearbyStations(
+        let nearby = store.nearbyStations(
             location: location,
             radiusKm: preferences.preferredRadiusKm,
             fuelType: preferences.selectedFuelType,
             limit: 150
         )
+        visibleStations = nearby
+
+        let fuelType = preferences.selectedFuelType
+        cachedCheapest = nearby
+            .min { ($0.price(for: fuelType) ?? .greatestFiniteMagnitude) < ($1.price(for: fuelType) ?? .greatestFiniteMagnitude) }
+
+        let prices = nearby.compactMap { $0.price(for: fuelType) }
+        if prices.isEmpty {
+            cachedAveragePrice = store.cachedAveragePrice
+        } else {
+            cachedAveragePrice = prices.reduce(Decimal.zero, +) / Decimal(prices.count)
+        }
+
+        updateWidgetData(location: location)
+        resolvePendingDeepLink()
     }
 
-    private func zoomToRadius(_ radiusKm: Double) {
-        guard let location = locationManager.location else { return }
-        let meters = radiusKm * 1000
-        let region = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: meters * 2.2,
-            longitudinalMeters: meters * 2.2
+    private func updateWidgetData(location: CLLocation) {
+        guard let cheapest = cachedCheapest else { return }
+        WidgetDataProvider.update(
+            cheapestStation: cheapest,
+            fuelType: preferences.selectedFuelType,
+            averagePrice: cachedAveragePrice,
+            tankLiters: preferences.tankSizeLiters,
+            userLocation: location,
+            vehicle: preferences.selectedVehicle,
+            radiusKm: preferences.preferredRadiusKm,
+            stationCount: visibleStations.count,
+            isDarkMode: preferences.appearance == .dark
         )
-        withAnimation(.easeInOut(duration: 0.4)) {
-            cameraPosition = .region(region)
+    }
+
+    private func resolvePendingDeepLink() {
+        guard let pendingId = appState.pendingStationId else { return }
+        if let station = store.allStations.first(where: { $0.id == pendingId }) {
+            appState.pendingStationId = nil
+            appState.selectedStation = station
+            appState.showStationDetail = true
         }
     }
 
-    private func openAppleMaps(station: FuelStation) {
-        guard let url = URL(string: "http://maps.apple.com/?daddr=\(station.latitude),\(station.longitude)&dirflg=d") else { return }
-        UIApplication.shared.open(url)
-    }
 }
 
 // MARK: - Radius Picker Sheet
@@ -436,37 +371,26 @@ struct RadiusPickerSheet: View {
                 Text("Radio de búsqueda")
                     .font(Theme.Fonts.headline)
                 Spacer()
-                Button {
+                Button("Aplicar") {
                     preferences.preferredRadiusKm = sliderValue
                     dismiss()
-                } label: {
-                    Text("Aplicar")
-                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .background(Theme.Colors.accentGradient)
-                        .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .font(Theme.Fonts.pillLabel)
             }
 
             Text("\(Int(sliderValue)) km")
-                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .font(Theme.Fonts.priceLarge)
                 .contentTransition(.numericText(value: sliderValue))
                 .animation(.snappy(duration: 0.2), value: sliderValue)
 
             Slider(value: $sliderValue, in: 1...50, step: 1) {
                 Text("Radio")
             } minimumValueLabel: {
-                Text("1")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
+                Text("1").font(Theme.Fonts.caption).foregroundStyle(.secondary)
             } maximumValueLabel: {
-                Text("50")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.Colors.tertiaryLabel)
+                Text("50").font(Theme.Fonts.caption).foregroundStyle(.secondary)
             }
+            .tint(Theme.Colors.accent)
 
             HStack(spacing: Theme.Spacing.sm) {
                 ForEach(UserPreferences.availableRadii, id: \.self) { radius in
@@ -476,18 +400,18 @@ struct RadiusPickerSheet: View {
                         }
                     } label: {
                         Text("\(Int(radius))")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .font(Theme.Fonts.pillLabel)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                             .background(
                                 Int(sliderValue) == Int(radius)
-                                    ? AnyShapeStyle(Theme.Colors.accentGradient)
-                                    : AnyShapeStyle(Theme.Colors.secondaryBackground)
+                                    ? Theme.Colors.accent
+                                    : Color(.tertiarySystemFill)
                             )
                             .foregroundStyle(
                                 Int(sliderValue) == Int(radius)
                                     ? .white
-                                    : Theme.Colors.label
+                                    : Color(.label)
                             )
                             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
                     }

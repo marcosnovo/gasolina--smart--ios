@@ -1,174 +1,257 @@
 import SwiftUI
+import CoreLocation
+
+enum SearchSortOrder: String, CaseIterable {
+    case relevance
+    case price
+    case distance
+
+    var label: String {
+        switch self {
+        case .relevance: "Relevancia"
+        case .price: "Precio"
+        case .distance: "Distancia"
+        }
+    }
+}
 
 struct SearchView: View {
     @Environment(StationStore.self) private var store
     @Environment(UserPreferences.self) private var preferences
+    @Environment(LocationManager.self) private var locationManager
     @Environment(AppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
     @State private var results: [FuelStation] = []
+    @State private var sortOrder: SearchSortOrder = .relevance
+    @State private var isShowingNearby = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if searchText.isEmpty {
                     searchPrompt
-                } else if results.isEmpty {
-                    noResults
                 } else {
                     resultsList
                 }
             }
-            .searchable(text: $searchText, prompt: "Municipio o provincia")
+            .searchable(text: $searchText, prompt: "Ciudad, calle o gasolinera")
             .navigationTitle("Buscar")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cerrar") { dismiss() }
-                }
-            }
             .onChange(of: searchText) { _, newValue in
                 performSearch(newValue)
+            }
+            .onChange(of: sortOrder) { _, _ in
+                performSearch(searchText)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { appState.showStationDetail && appState.selectedStation != nil },
+            set: { if !$0 { appState.showStationDetail = false } }
+        )) {
+            if let station = appState.selectedStation {
+                StationDetailView(station: station)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
 
     private var searchPrompt: some View {
-        VStack(spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: 8) {
             Spacer()
-
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.1))
-                    .frame(width: 80, height: 80)
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 32, weight: .light))
-                    .foregroundStyle(.tint.opacity(0.6))
-            }
-
-            VStack(spacing: Theme.Spacing.sm) {
-                Text("Busca por ciudad o provincia")
-                    .font(Theme.Fonts.headline)
-                Text("Encuentra gasolineras en cualquier\npunto de España.")
-                    .font(Theme.Fonts.subheadline)
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
-                    .multilineTextAlignment(.center)
-            }
-
+            Text("Busca gasolineras\npor nombre o ubicación")
+                .font(.title2.weight(.semibold))
+                .lineSpacing(2)
+            Text("Busca por ciudad, provincia, calle o nombre de gasolinera.")
+                .font(.subheadline)
+                .foregroundStyle(Color(.secondaryLabel))
             Spacer()
             Spacer()
         }
-    }
-
-    private var noResults: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            Spacer()
-
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.1))
-                    .frame(width: 80, height: 80)
-                Image(systemName: "fuelpump.slash")
-                    .font(.system(size: 30, weight: .light))
-                    .foregroundStyle(.orange.opacity(0.6))
-            }
-
-            VStack(spacing: Theme.Spacing.sm) {
-                Text("Sin resultados")
-                    .font(Theme.Fonts.headline)
-                Text("No se encontraron gasolineras\nen \"\(searchText)\".")
-                    .font(Theme.Fonts.subheadline)
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
-                    .multilineTextAlignment(.center)
-            }
-
-            Spacer()
-            Spacer()
-        }
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var resultsList: some View {
         List {
-            Section {
-                ForEach(results) { station in
-                    Button {
-                        appState.selectedStation = station
-                        appState.showStationDetail = true
-                        dismiss()
-                    } label: {
-                        StationSearchRow(station: station, fuelType: preferences.selectedFuelType)
+            if isShowingNearby {
+                Section {
+                    ForEach(results) { station in
+                        Button {
+                            appState.selectedStation = station
+                            appState.showStationDetail = true
+                        } label: {
+                            StationSearchRow(
+                                station: station,
+                                fuelType: preferences.selectedFuelType,
+                                userLocation: locationManager.location
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                } header: {
+                    Text("Sin resultados para \"\(searchText)\" · Cercanas a ti")
+                        .font(.caption)
+                        .textCase(.none)
                 }
-            } header: {
-                Text("\(results.count) resultados · ordenados por precio")
-                    .font(.system(size: 11))
-                    .textCase(.none)
+            } else {
+                Section {
+                    sortPicker
+                    ForEach(results) { station in
+                        Button {
+                            appState.selectedStation = station
+                            appState.showStationDetail = true
+                        } label: {
+                            StationSearchRow(
+                                station: station,
+                                fuelType: preferences.selectedFuelType,
+                                userLocation: locationManager.location
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text("\(results.count) resultados")
+                        .font(.caption)
+                        .textCase(.none)
+                }
             }
         }
         .listStyle(.plain)
     }
 
+    private var sortPicker: some View {
+        Picker("Ordenar", selection: $sortOrder) {
+            ForEach(SearchSortOrder.allCases, id: \.self) { order in
+                if order == .distance && locationManager.location == nil {
+                    EmptyView()
+                } else {
+                    Text(order.label).tag(order)
+                }
+            }
+        }
+        .pickerStyle(.segmented)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
+    }
+
+    private static let stripChars = CharacterSet.alphanumerics.inverted
+
     private func performSearch(_ query: String) {
-        let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard trimmed.count >= 2 else {
+        let cleaned = query.lowercased()
+            .components(separatedBy: Self.stripChars)
+            .joined(separator: " ")
+        let words = cleaned.components(separatedBy: .whitespaces)
+            .filter { $0.count >= 2 }
+        guard !words.isEmpty else {
             results = []
             return
         }
 
-        results = Array(
-            store.allStations
-                .filter { station in
-                    station.municipality.lowercased().contains(trimmed) ||
-                    station.province.lowercased().contains(trimmed)
+        let fuelType = preferences.selectedFuelType
+        let userLocation = locationManager.location
+
+        let withPrice = store.allStations.filter { $0.price(for: fuelType) != nil }
+
+        let filtered = withPrice.filter { station in
+            let searchableText = "\(station.municipality) \(station.province) \(station.address) \(station.name) \(station.brand)"
+                .lowercased()
+                .components(separatedBy: Self.stripChars)
+                .joined(separator: " ")
+            return words.allSatisfy { searchableText.contains($0) }
+        }
+
+        if filtered.isEmpty, let location = userLocation {
+            isShowingNearby = true
+            results = Array(
+                withPrice
+                    .sorted { relevanceScore($0, fuelType: fuelType, location: location) < relevanceScore($1, fuelType: fuelType, location: location) }
+                    .prefix(10)
+            )
+            return
+        }
+
+        isShowingNearby = false
+
+        let sorted: [FuelStation]
+        switch sortOrder {
+        case .price:
+            sorted = filtered.sorted {
+                ($0.price(for: fuelType) ?? .greatestFiniteMagnitude) <
+                ($1.price(for: fuelType) ?? .greatestFiniteMagnitude)
+            }
+        case .distance:
+            guard let location = userLocation else {
+                sorted = filtered
+                break
+            }
+            sorted = filtered.sorted {
+                $0.distanceKm(from: location) < $1.distanceKm(from: location)
+            }
+        case .relevance:
+            if let location = userLocation {
+                sorted = filtered.sorted {
+                    relevanceScore($0, fuelType: fuelType, location: location) <
+                    relevanceScore($1, fuelType: fuelType, location: location)
                 }
-                .filter { $0.price(for: preferences.selectedFuelType) != nil }
-                .sorted {
-                    let p1 = $0.price(for: preferences.selectedFuelType) ?? Decimal.greatestFiniteMagnitude
-                    let p2 = $1.price(for: preferences.selectedFuelType) ?? Decimal.greatestFiniteMagnitude
-                    return p1 < p2
+            } else {
+                sorted = filtered.sorted {
+                    ($0.price(for: fuelType) ?? .greatestFiniteMagnitude) <
+                    ($1.price(for: fuelType) ?? .greatestFiniteMagnitude)
                 }
-                .prefix(50)
-        )
+            }
+        }
+
+        results = Array(sorted.prefix(50))
+    }
+
+    private func relevanceScore(_ station: FuelStation, fuelType: FuelType, location: CLLocation) -> Double {
+        let price = (station.price(for: fuelType) ?? Decimal(99)) as NSDecimalNumber
+        let priceNormalized = price.doubleValue
+        let distanceKm = station.distanceKm(from: location)
+        return priceNormalized * 0.6 + (distanceKm / 100.0) * 0.4
     }
 }
 
 struct StationSearchRow: View {
     let station: FuelStation
     let fuelType: FuelType
+    let userLocation: CLLocation?
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            ZStack {
-                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.1))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "fuelpump.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.tint)
-            }
-
+        HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(station.name)
-                    .font(Theme.Fonts.headline)
+                    .font(.headline)
                     .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Label(station.municipality, systemImage: "mappin")
-                    Text(station.province)
+                HStack(spacing: 0) {
+                    Text(station.address)
+                        .lineLimit(1)
                 }
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.Colors.secondaryLabel)
-                .lineLimit(1)
+                .font(.caption)
+                .foregroundStyle(Color(.secondaryLabel))
+                HStack(spacing: 4) {
+                    Text(station.municipality)
+                    if let userLocation {
+                        Text("·")
+                        Text(station.distanceKm(from: userLocation).distanceFormatted)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(Color(.tertiaryLabel))
             }
 
             Spacer()
 
             if let price = station.price(for: fuelType) {
-                Text("\(price.priceFormatted)")
-                    .font(Theme.Fonts.priceSmall)
-                    .foregroundStyle(Theme.Colors.cheapPrice)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(price.priceFormatted)
+                        .font(Theme.Fonts.priceSmall)
+                    Text("€/L")
+                        .font(.caption2)
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
             }
         }
         .padding(.vertical, 4)

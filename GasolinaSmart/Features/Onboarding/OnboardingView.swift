@@ -21,41 +21,22 @@ struct OnboardingView: View {
             pageIndicator
                 .padding(.bottom, Theme.Spacing.lg)
         }
-        .background(Theme.Colors.background)
     }
 
     // MARK: - Welcome
 
     private var welcomePage: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             Spacer()
 
-            VStack(spacing: Theme.Spacing.lg) {
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.1))
-                        .frame(width: 130, height: 130)
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.06))
-                        .frame(width: 170, height: 170)
-                    Image(systemName: "fuelpump.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(.tint)
-                        .symbolEffect(.pulse, options: .repeating.speed(0.5))
-                }
+            Text("Ahorra cada vez\nque repostas")
+                .font(.largeTitle.weight(.bold))
+                .lineSpacing(4)
+                .padding(.bottom, 16)
 
-                VStack(spacing: Theme.Spacing.sm) {
-                    Text("Ahorra cada vez\nque repostas")
-                        .font(Theme.Fonts.largeTitle)
-                        .multilineTextAlignment(.center)
-
-                    Text("Encuentra la gasolinera más barata\ncerca de ti y decide cuándo repostar.")
-                        .font(Theme.Fonts.subheadline)
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, Theme.Spacing.xl)
-                }
-            }
+            Text("Encuentra la gasolinera más barata cerca de ti y decide cuándo repostar.")
+                .font(.body)
+                .foregroundStyle(Color(.secondaryLabel))
 
             Spacer()
             Spacer()
@@ -65,94 +46,66 @@ struct OnboardingView: View {
             }
             .padding(.bottom, Theme.Spacing.xl)
         }
+        .padding(.horizontal, 24)
     }
 
     // MARK: - Vehicle Setup
 
     private var vehiclePage: some View {
         ScrollView {
-            VStack(spacing: Theme.Spacing.lg) {
-                Spacer().frame(height: Theme.Spacing.lg)
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer().frame(height: 48)
 
-                VStack(spacing: Theme.Spacing.sm) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.accentColor.opacity(0.1))
-                            .frame(width: 90, height: 90)
-                        Image(systemName: "car.fill")
-                            .font(.system(size: 36))
-                            .foregroundStyle(.tint)
-                    }
+                Text("Tu vehículo")
+                    .font(.title2.weight(.semibold))
+                    .padding(.bottom, 4)
 
-                    Text("Configura tu vehículo")
-                        .font(Theme.Fonts.title)
+                Text("Puedes añadir más en Ajustes.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .padding(.bottom, 28)
 
-                    Text("Puedes añadir más vehículos en Ajustes.")
-                        .font(Theme.Fonts.caption)
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
-                }
+                Text("Nombre")
+                    .font(.caption)
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .textCase(.uppercase)
+                    .padding(.bottom, 4)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("NOMBRE")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
-                        .tracking(0.5)
-                    TextField("Ej: Mi coche", text: $vehicleName)
-                        .font(Theme.Fonts.body)
-                        .padding(Theme.Spacing.md)
-                        .background(Theme.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
-                }
-                .padding(.horizontal, Theme.Spacing.xl)
+                TextField("Ej: Mi coche", text: $vehicleName)
+                    .font(.body)
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                    .padding(.bottom, 24)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("COMBUSTIBLE")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
-                        .tracking(0.5)
-                        .padding(.horizontal, Theme.Spacing.xl)
+                Text("Combustible")
+                    .font(.caption)
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .textCase(.uppercase)
+                    .padding(.bottom, 4)
 
-                    VStack(spacing: Theme.Spacing.sm) {
-                        ForEach(FuelType.allCases) { fuel in
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    selectedFuelType = fuel
-                                }
-                            } label: {
-                                HStack(spacing: Theme.Spacing.md) {
-                                    Image(systemName: fuel.icon)
-                                        .font(.system(size: 16))
-                                        .foregroundStyle(selectedFuelType == fuel ? Color.accentColor : .secondary)
-                                        .frame(width: 24)
-                                    Text(fuel.displayName)
-                                        .font(Theme.Fonts.body)
-                                        .foregroundStyle(Theme.Colors.label)
-                                    Spacer()
-                                    if selectedFuelType == fuel {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.tint)
-                                            .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                                .padding(Theme.Spacing.md)
-                                .background(
-                                    RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
-                                        .fill(selectedFuelType == fuel
-                                              ? Color.accentColor.opacity(0.08)
-                                              : Theme.Colors.secondaryBackground)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
-                                        .stroke(selectedFuelType == fuel ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1.5)
-                                )
+                VStack(spacing: 0) {
+                    ForEach(FuelType.allCases) { fuel in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                selectedFuelType = fuel
                             }
-                            .buttonStyle(.plain)
+                        } label: {
+                            HStack {
+                                Text(fuel.displayName)
+                                    .font(.body)
+                                Spacer()
+                                if selectedFuelType == fuel {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            .padding(.vertical, 12)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, Theme.Spacing.xl)
                 }
-
-                Spacer().frame(height: Theme.Spacing.sm)
+                .padding(.bottom, 32)
 
                 OnboardingButton(title: "Continuar") {
                     let name = vehicleName.trimmingCharacters(in: .whitespaces)
@@ -166,6 +119,7 @@ struct OnboardingView: View {
                 }
                 .padding(.bottom, Theme.Spacing.xl)
             }
+            .padding(.horizontal, 24)
         }
         .scrollDismissesKeyboard(.interactively)
     }
@@ -173,38 +127,22 @@ struct OnboardingView: View {
     // MARK: - Location
 
     private var locationPage: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             Spacer()
 
-            VStack(spacing: Theme.Spacing.lg) {
-                ZStack {
-                    Circle()
-                        .fill(Color.blue.opacity(0.1))
-                        .frame(width: 130, height: 130)
-                    Circle()
-                        .fill(Color.blue.opacity(0.06))
-                        .frame(width: 170, height: 170)
-                    Image(systemName: "location.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(.blue)
-                }
+            Text("Tu ubicación")
+                .font(.title2.weight(.semibold))
+                .padding(.bottom, 16)
 
-                VStack(spacing: Theme.Spacing.sm) {
-                    Text("Tu ubicación")
-                        .font(Theme.Fonts.title)
-
-                    Text("Necesitamos tu ubicación para encontrar\ngasolineras cerca de ti.\nNo compartimos tu posición con nadie.")
-                        .font(Theme.Fonts.subheadline)
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, Theme.Spacing.xl)
-                }
-            }
+            Text("Necesitamos tu ubicación para encontrar gasolineras cerca de ti.\n\nNo compartimos tu posición con nadie.")
+                .font(.body)
+                .foregroundStyle(Color(.secondaryLabel))
+                .lineSpacing(4)
 
             Spacer()
             Spacer()
 
-            VStack(spacing: Theme.Spacing.md) {
+            VStack(spacing: 8) {
                 OnboardingButton(title: "Permitir ubicación") {
                     locationManager.requestPermission()
                 }
@@ -213,12 +151,16 @@ struct OnboardingView: View {
                     completeOnboarding()
                 } label: {
                     Text("Ahora no")
-                        .font(Theme.Fonts.subheadline)
-                        .foregroundStyle(Theme.Colors.tertiaryLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(Color(.tertiaryLabel))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
                 }
+                .buttonStyle(.plain)
             }
             .padding(.bottom, Theme.Spacing.xl)
         }
+        .padding(.horizontal, 24)
         .onChange(of: locationManager.authorizationStatus) { _, status in
             if status == .authorizedWhenInUse || status == .authorizedAlways || status == .denied {
                 completeOnboarding()
@@ -232,8 +174,8 @@ struct OnboardingView: View {
         HStack(spacing: 6) {
             ForEach(0..<3, id: \.self) { index in
                 Capsule()
-                    .fill(index == currentPage ? Color.accentColor : Theme.Colors.tertiaryLabel.opacity(0.4))
-                    .frame(width: index == currentPage ? 20 : 8, height: 8)
+                    .fill(index == currentPage ? Color(.label) : Color(.tertiaryLabel).opacity(0.3))
+                    .frame(width: index == currentPage ? 16 : 6, height: 4)
                     .animation(.easeInOut(duration: 0.25), value: currentPage)
             }
         }
@@ -244,8 +186,6 @@ struct OnboardingView: View {
     }
 }
 
-// MARK: - Onboarding Button
-
 private struct OnboardingButton: View {
     let title: String
     let action: () -> Void
@@ -253,14 +193,10 @@ private struct OnboardingButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(.headline, design: .rounded, weight: .semibold))
-                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Theme.Colors.accentGradient)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, Theme.Spacing.xl)
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .tint(Theme.Colors.accent)
     }
 }

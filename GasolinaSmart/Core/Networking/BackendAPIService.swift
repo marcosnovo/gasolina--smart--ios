@@ -2,15 +2,21 @@ import Foundation
 
 actor BackendAPIService {
     static let shared = BackendAPIService()
+    static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        return f
+    }()
 
     private var baseURL = "https://gasolina-smart-ios-production.up.railway.app"
 
     private let session: URLSession
+    private var lastHealthCheck: Date?
+    private var lastHealthResult: Bool = true
 
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 30
+        config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 20
         session = URLSession(configuration: config)
     }
 
@@ -49,7 +55,7 @@ actor BackendAPIService {
                 }
             }
 
-            let date = ISO8601DateFormatter().date(from: updated_at) ?? Date()
+            let date = BackendAPIService.isoFormatter.date(from: updated_at) ?? Date()
 
             return FuelStation(
                 id: id,
@@ -156,11 +162,21 @@ actor BackendAPIService {
     // MARK: - Health
 
     func isHealthy() async -> Bool {
+        if let lastCheck = lastHealthCheck,
+           Date().timeIntervalSince(lastCheck) < 120 {
+            return lastHealthResult
+        }
+
         guard let url = URL(string: "\(baseURL)/health") else { return false }
         do {
             let (_, response) = try await session.data(from: url)
-            return (response as? HTTPURLResponse)?.statusCode == 200
+            let healthy = (response as? HTTPURLResponse)?.statusCode == 200
+            lastHealthCheck = Date()
+            lastHealthResult = healthy
+            return healthy
         } catch {
+            lastHealthCheck = Date()
+            lastHealthResult = false
             return false
         }
     }

@@ -14,28 +14,31 @@ final class StationStore {
     private var loadedRadiusKm: Double = 0
     private var loadGeneration = 0
 
-    func loadStations(near location: CLLocation? = nil, radiusKm: Double = 50) async {
-        await loadFromBackend(location: location, radiusKm: radiusKm)
-    }
-
-    func reloadIfNeeded(location: CLLocation?, radiusKm: Double) async {
-        guard radiusKm > loadedRadiusKm else { return }
-        await loadFromBackend(location: location, radiusKm: radiusKm, force: true)
-    }
-
-    // MARK: - Backend-first loading
-
-    private func loadFromBackend(location: CLLocation?, radiusKm: Double, force: Bool = false) async {
-        loadGeneration += 1
-        let myGeneration = loadGeneration
-
-        if allStations.isEmpty, let cached = await StationCache.shared.getStale() {
+    func loadCacheImmediately() async {
+        guard allStations.isEmpty else { return }
+        if let cached = await StationCache.shared.getStale() {
             allStations = cached
             lastUpdated = await StationCache.shared.get()?.timestamp
             isUsingCache = true
         }
+    }
 
-        if !force, let age = await StationCache.shared.cacheAge(), age < 5 * 60 {
+    func loadStations(near location: CLLocation? = nil, radiusKm: Double = 50) async {
+        await loadFromNetwork(location: location, radiusKm: radiusKm)
+    }
+
+    func reloadIfNeeded(location: CLLocation?, radiusKm: Double) async {
+        guard radiusKm > loadedRadiusKm else { return }
+        await loadFromNetwork(location: location, radiusKm: radiusKm, force: true)
+    }
+
+    // MARK: - Network loading
+
+    private func loadFromNetwork(location: CLLocation?, radiusKm: Double, force: Bool = false) async {
+        loadGeneration += 1
+        let myGeneration = loadGeneration
+
+        if !force, let age = await StationCache.shared.cacheAge(), age < 5 * 60, !allStations.isEmpty {
             isLoading = false
             return
         }
@@ -51,7 +54,7 @@ final class StationStore {
         let fetchRadius = max(radiusKm + 10, 30)
 
         do {
-            if useBackend, await BackendAPIService.shared.isHealthy() {
+            if useBackend {
                 guard myGeneration == loadGeneration else { return }
                 try await loadFromBackendAPI(location: location, radiusKm: fetchRadius, generation: myGeneration)
             } else {
@@ -63,20 +66,16 @@ final class StationStore {
             isUsingCache = false
         } catch {
             guard myGeneration == loadGeneration else { return }
-            if useBackend {
-                do {
-                    try await loadFromDirectAPI(location: location, generation: myGeneration)
-                    guard myGeneration == loadGeneration else { return }
-                    loadedRadiusKm = 60
-                    isUsingCache = false
-                } catch {
-                    guard myGeneration == loadGeneration else { return }
-                    if allStations.isEmpty {
-                        self.error = error.localizedDescription
-                    }
+            do {
+                try await loadFromDirectAPI(location: location, generation: myGeneration)
+                guard myGeneration == loadGeneration else { return }
+                loadedRadiusKm = 60
+                isUsingCache = false
+            } catch {
+                guard myGeneration == loadGeneration else { return }
+                if allStations.isEmpty {
+                    self.error = error.localizedDescription
                 }
-            } else if allStations.isEmpty {
-                self.error = error.localizedDescription
             }
         }
         if myGeneration == loadGeneration {
@@ -98,7 +97,7 @@ final class StationStore {
             cachedAveragePrice = Decimal(avg)
         }
         if let updated = response.last_updated {
-            lastUpdated = ISO8601DateFormatter().date(from: updated) ?? Date()
+            lastUpdated = BackendAPIService.isoFormatter.date(from: updated) ?? Date()
         } else {
             lastUpdated = Date()
         }
@@ -209,6 +208,18 @@ final class StationStore {
         if minutes < 60 { return "\(prefix)Hace \(minutes) min" }
         let hours = minutes / 60
         return "\(prefix)Hace \(hours) h"
+    }
+
+    func priceOpportunity(
+        stationPrice: Decimal?,
+        averagePrice: Decimal?,
+        tankLiters: Double
+    ) -> PriceOpportunity {
+        guard let stationPrice, let averagePrice else { return .unknown }
+        let saving = (averagePrice - stationPrice) * Decimal(tankLiters)
+        if saving > 3 { return .great }
+        if saving > 0 { return .fair }
+        return .poor
     }
 }
 

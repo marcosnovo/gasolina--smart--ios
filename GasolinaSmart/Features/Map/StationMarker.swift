@@ -9,41 +9,25 @@ struct StationMarker: View {
         ZStack {
             if isCheapest {
                 Circle()
-                    .fill(Theme.Colors.accent.opacity(0.12))
-                    .frame(width: 52, height: 52)
-
+                    .fill(Color.blue.opacity(0.12))
+                    .frame(width: 36, height: 36)
                 Circle()
-                    .fill(Theme.Colors.accentGradient)
-                    .frame(width: 38, height: 38)
-                    .shadow(color: Theme.Colors.accent.opacity(0.35), radius: 8, y: 3)
-
-                Image(systemName: "fuelpump.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                    .fill(Color.blue)
+                    .frame(width: 14, height: 14)
+            } else if isFavorite {
+                Circle()
+                    .strokeBorder(Color.blue.opacity(0.5), lineWidth: 1.5)
+                    .frame(width: 20, height: 20)
+                Circle()
+                    .fill(Color(.systemGray))
+                    .frame(width: 8, height: 8)
             } else {
                 Circle()
-                    .fill(Theme.Colors.markerDefault.opacity(0.85))
-                    .frame(width: 24, height: 24)
-                    .shadow(color: .black.opacity(0.1), radius: 3, y: 1)
-
-                Image(systemName: "fuelpump.fill")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white)
+                    .fill(Color(.systemGray))
+                    .frame(width: 10, height: 10)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if isFavorite {
-                Circle()
-                    .fill(.white)
-                    .frame(width: 16, height: 16)
-                    .overlay(
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.pink)
-                    )
-                    .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
-                    .offset(x: isCheapest ? 5 : 3, y: isCheapest ? -5 : -3)
-            }
-        }
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
     }
 }

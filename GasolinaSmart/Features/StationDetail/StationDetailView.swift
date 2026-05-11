@@ -6,6 +6,8 @@ struct StationDetailView: View {
     @Environment(UserPreferences.self) private var preferences
     @Environment(LocationManager.self) private var locationManager
     @Environment(StationStore.self) private var store
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var showNavigationPicker = false
 
     private var distance: Double? {
         guard let location = locationManager.location else { return nil }
@@ -25,172 +27,212 @@ struct StationDetailView: View {
         )
     }
 
-    private var decision: FuelDecision {
-        store.fuelDecisionMessage(
+    private var opportunity: PriceOpportunity {
+        store.priceOpportunity(
             stationPrice: selectedPrice,
             averagePrice: averagePrice,
-            tankLiters: preferences.tankSizeLiters,
-            distanceKm: distance
+            tankLiters: preferences.tankSizeLiters
         )
     }
+
+    private var isDark: Bool { colorScheme == .dark }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: Theme.Spacing.md) {
+                VStack(spacing: 0) {
                     heroSection
-                    comparisonSection
+                    priceCard
+                    infoRows
                     allPricesSection
-                    navigationSection
-                    infoSection
+                    actionSection
+                    footerSection
                 }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.xl)
+                .padding(.bottom, 32)
             }
-            .background(Theme.Colors.background)
+            .background(isDark ? Color.black : Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Text(station.brand)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.Colors.secondaryLabel)
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         preferences.toggleFavorite(station.id)
                     } label: {
                         Image(systemName: preferences.isFavorite(station.id) ? "heart.fill" : "heart")
+                            .font(.system(size: 17, weight: .medium))
                             .symbolEffect(.bounce, value: preferences.isFavorite(station.id))
-                            .foregroundStyle(preferences.isFavorite(station.id) ? .pink : .secondary)
+                            .foregroundStyle(preferences.isFavorite(station.id) ? .red : Color(.tertiaryLabel))
                     }
                 }
             }
         }
     }
 
-    // MARK: - Hero Section
+    // MARK: - Hero
 
     private var heroSection: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            VStack(spacing: 6) {
-                Text(station.name)
-                    .font(Theme.Fonts.title)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(station.brand)
+                .font(.system(size: 34, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(isDark ? .white : Color(.label))
 
+            Text(station.name)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color(.secondaryLabel))
+
+            HStack(spacing: 5) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Colors.accent)
                 Text(station.address)
-                    .font(Theme.Fonts.subheadline)
-                    .foregroundStyle(Theme.Colors.secondaryLabel)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-
-                HStack(spacing: Theme.Spacing.md) {
-                    Label(station.municipality, systemImage: "mappin")
-                    if let distance {
-                        Label(distance.distanceFormatted, systemImage: "location.fill")
-                    }
+                if let distance {
+                    Text("·")
+                        .foregroundStyle(Color(.quaternaryLabel))
+                    Text(distance.distanceFormatted)
+                        .foregroundStyle(Theme.Colors.accent)
                 }
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.Colors.tertiaryLabel)
             }
-
-            if let selectedPrice {
-                VStack(spacing: 4) {
-                    Text(selectedPrice.priceFormatted)
-                        .font(Theme.Fonts.priceHero)
-                        .foregroundStyle(Theme.Colors.label)
-
-                    HStack(spacing: 6) {
-                        Text("€/L")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(Theme.Colors.secondaryLabel)
-                        Text(preferences.selectedFuelType.shortLabel)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Theme.Colors.accentGradient)
-                            .clipShape(Capsule())
-                    }
-                }
-                .padding(.top, 4)
-            }
-
-            HStack(spacing: 8) {
-                Image(systemName: decision.verdict.icon)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(decision.verdict.color)
-                Text(decision.verdict.title)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(decision.verdict.color)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(decision.verdict.color.opacity(0.1))
-            .clipShape(Capsule())
-
-            Button(action: openAppleMaps) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                        .font(.system(size: 13))
-                    Text("Cómo llegar")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
-                .background(Theme.Colors.accentGradient)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
-            }
-            .buttonStyle(.plain)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Color(.secondaryLabel))
         }
-        .padding(Theme.Spacing.lg)
-        .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .padding(.bottom, 20)
     }
 
-    // MARK: - Comparison
+    // MARK: - Price Card
 
-    private var comparisonSection: some View {
-        Group {
+    private var priceCard: some View {
+        VStack(spacing: 12) {
+            if let selectedPrice {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(selectedPrice.priceFormatted)
+                        .font(.system(size: 52, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.Colors.accent)
+
+                    Text("€/L")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(isDark ? Color(.tertiaryLabel) : Color(.secondaryLabel))
+
+                    Spacer()
+                }
+
+                HStack(spacing: 8) {
+                    Text(preferences.selectedFuelType.displayName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Theme.Colors.accent.opacity(isDark ? 0.2 : 0.12))
+                        .foregroundStyle(Theme.Colors.accent)
+                        .clipShape(Capsule())
+
+                    opportunityBadge
+
+                    Spacer()
+                }
+            }
+        }
+        .padding(20)
+        .background(isDark ? Color(white: 0.08) : .white)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
+    private var opportunityBadge: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(opportunity.color)
+                .frame(width: 6, height: 6)
+            Text(opportunity.label)
+                .font(.system(size: 11, weight: .semibold))
+
             if let selectedPrice, let averagePrice {
                 let saving = store.estimatedSaving(
                     stationPrice: selectedPrice,
                     averagePrice: averagePrice,
                     tankLiters: preferences.tankSizeLiters
                 )
-
-                HStack(spacing: 0) {
-                    ComparisonMetric(
-                        label: "Media zona",
-                        value: "\(averagePrice.priceFormatted)",
-                        unit: "€/L",
-                        color: Theme.Colors.label
-                    )
-
-                    Divider().frame(height: 40)
-
-                    ComparisonMetric(
-                        label: "Ahorro depósito",
-                        value: saving > 0 ? "-\(saving.savingFormatted)" : saving.savingFormatted,
-                        unit: nil,
-                        color: saving > 0 ? Theme.Colors.saving : Theme.Colors.label
-                    )
-
-                    Divider().frame(height: 40)
-
-                    ComparisonMetric(
-                        label: "Depósito",
-                        value: "\(Int(preferences.tankSizeLiters))",
-                        unit: "L",
-                        color: Theme.Colors.secondaryLabel
-                    )
+                if saving > 0 {
+                    Text("· -\(saving.savingFormatted)")
+                        .font(.system(size: 11, weight: .medium))
                 }
-                .padding(.vertical, Theme.Spacing.md)
-                .padding(.horizontal, Theme.Spacing.sm)
-                .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+            }
+        }
+        .foregroundStyle(opportunity.color)
+    }
+
+    // MARK: - Info Rows
+
+    private var infoRows: some View {
+        VStack(spacing: 0) {
+            if let averagePrice {
+                infoRow(
+                    icon: "chart.bar.fill",
+                    label: "Media zona",
+                    value: "\(averagePrice.priceFormatted) €/L",
+                    valueColor: nil
+                )
+            }
+
+            infoRow(
+                icon: "fuelpump.fill",
+                label: "Depósito",
+                value: "\(Int(preferences.tankSizeLiters)) L",
+                valueColor: nil
+            )
+
+            if let selectedPrice {
+                let total = selectedPrice * Decimal(preferences.tankSizeLiters)
+                infoRow(
+                    icon: "creditcard.fill",
+                    label: "Llenar depósito",
+                    value: total.savingFormatted,
+                    valueColor: Theme.Colors.accent
+                )
+            }
+
+            if let distance {
+                infoRow(
+                    icon: "location.fill",
+                    label: "Distancia",
+                    value: distance.distanceFormatted,
+                    valueColor: nil,
+                    isLast: true
+                )
+            }
+        }
+        .background(isDark ? Color(white: 0.08) : .white)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
+    private func infoRow(icon: String, label: String, value: String, valueColor: Color?, isLast: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(isDark ? Theme.Colors.accent : Color(.tertiaryLabel))
+                    .frame(width: 20, alignment: .center)
+
+                Text(label)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(isDark ? Color(white: 0.7) : Color(.secondaryLabel))
+
+                Spacer()
+
+                Text(value)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(valueColor ?? (isDark ? .white : Color(.label)))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+
+            if !isLast {
+                Divider()
+                    .padding(.leading, 48)
             }
         }
     }
@@ -198,152 +240,97 @@ struct StationDetailView: View {
     // MARK: - All Prices
 
     private var allPricesSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Todos los precios")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.Colors.secondaryLabel)
-                .textCase(.uppercase)
-                .tracking(0.5)
+        VStack(alignment: .leading, spacing: 0) {
+            Text("PRECIOS")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .tracking(1)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
 
-            VStack(spacing: 0) {
-                ForEach(FuelType.allCases) { fuel in
-                    if let price = station.price(for: fuel) {
-                        let isSelected = fuel == preferences.selectedFuelType
-                        HStack {
-                            HStack(spacing: 10) {
-                                Image(systemName: fuel.icon)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(isSelected ? Theme.Colors.accent : .secondary)
-                                    .frame(width: 18)
-                                Text(fuel.displayName)
-                                    .font(isSelected ? .system(size: 15, weight: .semibold) : .system(size: 15))
-                            }
+            ForEach(Array(FuelType.allCases.enumerated()), id: \.element.id) { index, fuel in
+                if let price = station.price(for: fuel) {
+                    let isSelected = fuel == preferences.selectedFuelType
+                    let isLastPrice = isLastVisibleFuel(fuel)
+
+                    VStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Image(systemName: fuel.icon)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(isSelected ? Theme.Colors.accent : (isDark ? Color(white: 0.4) : Color(.tertiaryLabel)))
+                                .frame(width: 20, alignment: .center)
+
+                            Text(fuel.displayName)
+                                .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                                .foregroundStyle(isDark ? .white : Color(.label))
+
                             Spacer()
-                            Text("\(price.priceFormatted) €/L")
-                                .font(.system(size: 15, weight: isSelected ? .bold : .medium, design: .rounded))
-                                .foregroundStyle(isSelected ? Theme.Colors.accent : Theme.Colors.secondaryLabel)
-                        }
-                        .padding(.vertical, 11)
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .background(isSelected ? Theme.Colors.accent.opacity(0.06) : .clear)
 
-                        if fuel != FuelType.allCases.last(where: { station.price(for: $0) != nil }) {
-                            Divider().padding(.leading, 44)
+                            Text("\(price.priceFormatted) €/L")
+                                .font(.system(size: 15, weight: isSelected ? .bold : .regular, design: .rounded))
+                                .foregroundStyle(isSelected ? Theme.Colors.accent : (isDark ? Color(white: 0.5) : Color(.secondaryLabel)))
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(isSelected ? Theme.Colors.accent.opacity(isDark ? 0.12 : 0.06) : .clear)
+
+                        if !isLastPrice {
+                            Divider()
+                                .padding(.leading, 48)
                         }
                     }
                 }
             }
-            .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
         }
+        .background(isDark ? Color(white: 0.08) : .white)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
     }
 
-    // MARK: - Navigation
-
-    private var navigationSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Otras apps de navegación")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.Colors.secondaryLabel)
-                .textCase(.uppercase)
-                .tracking(0.5)
-
-            HStack(spacing: Theme.Spacing.sm) {
-                NavButton(title: "Google Maps", icon: "globe", color: .blue) {
-                    openGoogleMaps()
-                }
-                NavButton(title: "Waze", icon: "car.fill", color: .cyan) {
-                    openWaze()
-                }
-            }
-        }
+    private func isLastVisibleFuel(_ fuel: FuelType) -> Bool {
+        let visibleFuels = FuelType.allCases.filter { station.price(for: $0) != nil }
+        return visibleFuels.last == fuel
     }
 
-    // MARK: - Info
+    // MARK: - Action
 
-    private var infoSection: some View {
-        HStack(spacing: Theme.Spacing.lg) {
-            Label(
-                station.lastUpdated.formatted(.dateTime.day().month().hour().minute()),
-                systemImage: "clock"
-            )
-            Label("Ministerio", systemImage: "building.columns")
-        }
-        .font(.system(size: 11))
-        .foregroundStyle(Theme.Colors.tertiaryLabel)
-        .frame(maxWidth: .infinity)
-        .padding(.top, Theme.Spacing.xs)
-    }
-
-    // MARK: - Actions
-
-    private func openAppleMaps() {
-        guard let url = URL(string: "http://maps.apple.com/?daddr=\(station.latitude),\(station.longitude)&dirflg=d") else { return }
-        UIApplication.shared.open(url)
-    }
-
-    private func openGoogleMaps() {
-        guard let url = URL(string: "https://www.google.com/maps/dir/?api=1&destination=\(station.latitude),\(station.longitude)&travelmode=driving") else { return }
-        UIApplication.shared.open(url)
-    }
-
-    private func openWaze() {
-        guard let url = URL(string: "https://waze.com/ul?ll=\(station.latitude),\(station.longitude)&navigate=yes") else { return }
-        UIApplication.shared.open(url)
-    }
-}
-
-// MARK: - Supporting Views
-
-private struct ComparisonMetric: View {
-    let label: String
-    let value: String
-    let unit: String?
-    let color: Color
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Theme.Colors.tertiaryLabel)
-                .textCase(.uppercase)
-                .tracking(0.3)
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundStyle(color)
-                if let unit {
-                    Text(unit)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.Colors.tertiaryLabel)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-private struct NavButton: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(color)
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.Colors.label)
+    private var actionSection: some View {
+        Button { showNavigationPicker = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Cómo llegar")
+                    .font(.system(size: 16, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+            .padding(.vertical, 16)
+            .background(Theme.Colors.accent)
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+        .sheet(isPresented: $showNavigationPicker) {
+            NavigationPickerSheet(station: station)
+                .presentationDetents([.height(180)])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footerSection: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 10))
+            Text("\(station.municipality) · \(station.lastUpdated.formatted(.dateTime.day().month().hour().minute())) · Ministerio de Industria")
+                .font(.system(size: 10))
+        }
+        .foregroundStyle(Color(.quaternaryLabel))
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
     }
 }

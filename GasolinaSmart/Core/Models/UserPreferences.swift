@@ -1,4 +1,19 @@
 import Foundation
+import SwiftUI
+
+enum AppAppearance: String, CaseIterable {
+    case system
+    case light
+    case dark
+
+    var displayName: String {
+        switch self {
+        case .system: "Sistema"
+        case .light: "Claro"
+        case .dark: "Oscuro"
+        }
+    }
+}
 
 @Observable
 final class UserPreferences {
@@ -16,6 +31,17 @@ final class UserPreferences {
     }
     var favoriteStationIds: Set<String> {
         didSet { save() }
+    }
+    var appearance: AppAppearance {
+        didSet { save() }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch appearance {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
     }
 
     var selectedVehicle: Vehicle {
@@ -77,6 +103,8 @@ final class UserPreferences {
         hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
         let ids = defaults.stringArray(forKey: "favoriteStationIds") ?? []
         favoriteStationIds = Set(ids)
+        let appearanceRaw = defaults.string(forKey: "appearance") ?? AppAppearance.system.rawValue
+        appearance = AppAppearance(rawValue: appearanceRaw) ?? .system
     }
 
     func addVehicle(_ vehicle: Vehicle) {
@@ -111,6 +139,7 @@ final class UserPreferences {
         defaults.set(preferredRadiusKm, forKey: "preferredRadiusKm")
         defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
         defaults.set(Array(favoriteStationIds), forKey: "favoriteStationIds")
+        defaults.set(appearance.rawValue, forKey: "appearance")
     }
 }
 

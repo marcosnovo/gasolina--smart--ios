@@ -15,16 +15,16 @@ struct FuelTypePickerSheet: View {
                         HStack {
                             Image(systemName: fuel.icon)
                                 .frame(width: 24)
-                                .foregroundStyle(.tint)
+                                .foregroundStyle(.blue)
                             Text(fuel.displayName)
-                                .foregroundStyle(Theme.Colors.label)
                             Spacer()
                             if preferences.selectedFuelType == fuel {
                                 Image(systemName: "checkmark")
-                                    .foregroundStyle(.tint)
+                                    .foregroundStyle(.blue)
                             }
                         }
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .navigationTitle("Combustible")

@@ -6,6 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		6A5B98CF2FAE23BD00816B22 /* MapLibre.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6A5B98CE2FAE23BD00816B22 /* MapLibre.xcframework */; };
+		6A5B98D02FAE23BD00816B22 /* MapLibre.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 6A5B98CE2FAE23BD00816B22 /* MapLibre.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		6A5B9A1D2FB20CB000816B22 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6A5B9A1C2FB20CB000816B22 /* WidgetKit.framework */; };
+		6A5B9A1F2FB20CB000816B22 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6A5B9A1E2FB20CB000816B22 /* SwiftUI.framework */; };
+		6A5B9A2E2FB20CB100816B22 /* GasolinaSmartWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6A5B9A1B2FB20CB000816B22 /* GasolinaSmartWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		6A5B98362FADCE4500816B22 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,12 +29,49 @@
 			remoteGlobalIDString = 6A5B98272FADCE4400816B22;
 			remoteInfo = GasolinaSmart;
 		};
+		6A5B9A2C2FB20CB100816B22 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A5B98202FADCE4400816B22 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6A5B9A1A2FB20CB000816B22;
+			remoteInfo = GasolinaSmartWidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		6A5B98D12FAE23BD00816B22 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				6A5B98D02FAE23BD00816B22 /* MapLibre.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6A5B9A332FB20CB100816B22 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				6A5B9A2E2FB20CB100816B22 /* GasolinaSmartWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		6A5B98282FADCE4400816B22 /* GasolinaSmart.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GasolinaSmart.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A5B98352FADCE4500816B22 /* GasolinaSmartTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GasolinaSmartTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A5B983F2FADCE4500816B22 /* GasolinaSmartUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GasolinaSmartUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6A5B98CE2FAE23BD00816B22 /* MapLibre.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = MapLibre.xcframework; sourceTree = "<group>"; };
+		6A5B9A1B2FB20CB000816B22 /* GasolinaSmartWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GasolinaSmartWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		6A5B9A1C2FB20CB000816B22 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		6A5B9A1E2FB20CB000816B22 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		6A5B9A3A2FB20D2C00816B22 /* GasolinaSmartWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GasolinaSmartWidgetExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -36,6 +81,13 @@
 				Info.plist,
 			);
 			target = 6A5B98272FADCE4400816B22 /* GasolinaSmart */;
+		};
+		6A5B9A322FB20CB100816B22 /* Exceptions for "GasolinaSmartWidget" folder in "GasolinaSmartWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6A5B9A1A2FB20CB000816B22 /* GasolinaSmartWidgetExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -58,6 +110,14 @@
 			path = GasolinaSmartUITests;
 			sourceTree = "<group>";
 		};
+		6A5B9A202FB20CB000816B22 /* GasolinaSmartWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6A5B9A322FB20CB100816B22 /* Exceptions for "GasolinaSmartWidget" folder in "GasolinaSmartWidgetExtension" target */,
+			);
+			path = GasolinaSmartWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -65,6 +125,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6A5B98CF2FAE23BD00816B22 /* MapLibre.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -82,15 +143,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6A5B9A182FB20CB000816B22 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A5B9A1F2FB20CB000816B22 /* SwiftUI.framework in Frameworks */,
+				6A5B9A1D2FB20CB000816B22 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		6A5B981F2FADCE4400816B22 = {
 			isa = PBXGroup;
 			children = (
+				6A5B9A3A2FB20D2C00816B22 /* GasolinaSmartWidgetExtension.entitlements */,
 				6A5B982A2FADCE4400816B22 /* GasolinaSmart */,
 				6A5B98382FADCE4500816B22 /* GasolinaSmartTests */,
 				6A5B98422FADCE4500816B22 /* GasolinaSmartUITests */,
+				6A5B9A202FB20CB000816B22 /* GasolinaSmartWidget */,
+				6A5B98CD2FAE23BD00816B22 /* Frameworks */,
 				6A5B98292FADCE4400816B22 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -101,8 +174,19 @@
 				6A5B98282FADCE4400816B22 /* GasolinaSmart.app */,
 				6A5B98352FADCE4500816B22 /* GasolinaSmartTests.xctest */,
 				6A5B983F2FADCE4500816B22 /* GasolinaSmartUITests.xctest */,
+				6A5B9A1B2FB20CB000816B22 /* GasolinaSmartWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		6A5B98CD2FAE23BD00816B22 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				6A5B98CE2FAE23BD00816B22 /* MapLibre.xcframework */,
+				6A5B9A1C2FB20CB000816B22 /* WidgetKit.framework */,
+				6A5B9A1E2FB20CB000816B22 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -115,10 +199,13 @@
 				6A5B98242FADCE4400816B22 /* Sources */,
 				6A5B98252FADCE4400816B22 /* Frameworks */,
 				6A5B98262FADCE4400816B22 /* Resources */,
+				6A5B98D12FAE23BD00816B22 /* Embed Frameworks */,
+				6A5B9A332FB20CB100816B22 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				6A5B9A2D2FB20CB100816B22 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6A5B982A2FADCE4400816B22 /* GasolinaSmart */,
@@ -176,6 +263,28 @@
 			productReference = 6A5B983F2FADCE4500816B22 /* GasolinaSmartUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		6A5B9A1A2FB20CB000816B22 /* GasolinaSmartWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6A5B9A2F2FB20CB100816B22 /* Build configuration list for PBXNativeTarget "GasolinaSmartWidgetExtension" */;
+			buildPhases = (
+				6A5B9A172FB20CB000816B22 /* Sources */,
+				6A5B9A182FB20CB000816B22 /* Frameworks */,
+				6A5B9A192FB20CB000816B22 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6A5B9A202FB20CB000816B22 /* GasolinaSmartWidget */,
+			);
+			name = GasolinaSmartWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = GasolinaSmartWidgetExtension;
+			productReference = 6A5B9A1B2FB20CB000816B22 /* GasolinaSmartWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -197,6 +306,9 @@
 						CreatedOnToolsVersion = 26.4.1;
 						TestTargetID = 6A5B98272FADCE4400816B22;
 					};
+					6A5B9A1A2FB20CB000816B22 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
 				};
 			};
 			buildConfigurationList = 6A5B98232FADCE4400816B22 /* Build configuration list for PBXProject "GasolinaSmart" */;
@@ -216,6 +328,7 @@
 				6A5B98272FADCE4400816B22 /* GasolinaSmart */,
 				6A5B98342FADCE4500816B22 /* GasolinaSmartTests */,
 				6A5B983E2FADCE4500816B22 /* GasolinaSmartUITests */,
+				6A5B9A1A2FB20CB000816B22 /* GasolinaSmartWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -236,6 +349,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		6A5B983D2FADCE4500816B22 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6A5B9A192FB20CB000816B22 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -266,6 +386,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6A5B9A172FB20CB000816B22 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -278,6 +405,11 @@
 			isa = PBXTargetDependency;
 			target = 6A5B98272FADCE4400816B22 /* GasolinaSmart */;
 			targetProxy = 6A5B98402FADCE4500816B22 /* PBXContainerItemProxy */;
+		};
+		6A5B9A2D2FB20CB100816B22 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6A5B9A1A2FB20CB000816B22 /* GasolinaSmartWidgetExtension */;
+			targetProxy = 6A5B9A2C2FB20CB100816B22 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -408,6 +540,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GasolinaSmart/GasolinaSmart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R2NTD25VWF;
@@ -442,6 +575,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GasolinaSmart/GasolinaSmart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R2NTD25VWF;
@@ -555,6 +689,68 @@
 			};
 			name = Release;
 		};
+		6A5B9A302FB20CB100816B22 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = GasolinaSmartWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R2NTD25VWF;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GasolinaSmartWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GasolinaSmartWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.GasolinaSmart.GasolinaSmartWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6A5B9A312FB20CB100816B22 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = GasolinaSmartWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R2NTD25VWF;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GasolinaSmartWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GasolinaSmartWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.GasolinaSmart.GasolinaSmartWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -590,6 +786,15 @@
 			buildConfigurations = (
 				6A5B98502FADCE4500816B22 /* Debug */,
 				6A5B98512FADCE4500816B22 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6A5B9A2F2FB20CB100816B22 /* Build configuration list for PBXNativeTarget "GasolinaSmartWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6A5B9A302FB20CB100816B22 /* Debug */,
+				6A5B9A312FB20CB100816B22 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
