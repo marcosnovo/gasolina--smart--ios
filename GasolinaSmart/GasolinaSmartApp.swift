@@ -25,10 +25,14 @@ struct GasolinaSmartApp: App {
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == WidgetConstants.urlScheme else { return }
 
-        if url.host == "navigate",
-           let stationId = url.pathComponents.dropFirst().first,
-           let station = stationStore.allStations.first(where: { $0.id == stationId }) {
-            NavigationHelper.openPreferred(station: station, app: preferences.preferredNavigationApp)
+        if url.host == "navigate" {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            if let latStr = components?.queryItems?.first(where: { $0.name == "lat" })?.value,
+               let lonStr = components?.queryItems?.first(where: { $0.name == "lon" })?.value,
+               let lat = Double(latStr), let lon = Double(lonStr) {
+                let navURL = NavigationHelper.navigationURL(latitude: lat, longitude: lon, app: preferences.preferredNavigationApp)
+                UIApplication.shared.open(navURL)
+            }
             return
         }
 

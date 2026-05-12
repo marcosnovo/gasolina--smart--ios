@@ -77,7 +77,7 @@ private struct SmallWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .widgetURL(data.navigationURL ?? data.deepLinkURL)
+        .widgetURL(data.navigateDeepLinkURL)
     }
 }
 
@@ -141,20 +141,18 @@ private struct MediumWidgetView: View {
 
                 Spacer(minLength: 8)
 
-                if let navURL = data.navigationURL {
-                    Link(destination: navURL) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "location.fill")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Navegar")
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(widgetAccent)
-                        .clipShape(Capsule())
+                Link(destination: data.navigateDeepLinkURL) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Navegar")
+                            .font(.system(size: 13, weight: .semibold))
                     }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(widgetAccent)
+                    .clipShape(Capsule())
                 }
             }
         }

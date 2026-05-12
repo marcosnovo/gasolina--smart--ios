@@ -38,8 +38,8 @@ struct WidgetStationData: Codable {
         URL(string: "\(WidgetConstants.urlScheme)://station/\(stationId)")!
     }
 
-    var navigationURL: URL? {
-        URL(string: navigationURLString)
+    var navigateDeepLinkURL: URL {
+        URL(string: "\(WidgetConstants.urlScheme)://navigate?lat=\(stationLatitude)&lon=\(stationLongitude)")!
     }
 
     static let placeholder = WidgetStationData(
