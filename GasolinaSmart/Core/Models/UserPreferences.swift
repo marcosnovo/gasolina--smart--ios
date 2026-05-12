@@ -15,6 +15,28 @@ enum AppAppearance: String, CaseIterable {
     }
 }
 
+enum PreferredNavigationApp: String, CaseIterable, Codable {
+    case appleMaps
+    case googleMaps
+    case waze
+
+    var displayName: String {
+        switch self {
+        case .appleMaps: "Apple Maps"
+        case .googleMaps: "Google Maps"
+        case .waze: "Waze"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .appleMaps: "map.fill"
+        case .googleMaps: "mappin.circle.fill"
+        case .waze: "car.fill"
+        }
+    }
+}
+
 @Observable
 final class UserPreferences {
     var vehicles: [Vehicle] {
@@ -33,6 +55,9 @@ final class UserPreferences {
         didSet { save() }
     }
     var appearance: AppAppearance {
+        didSet { save() }
+    }
+    var preferredNavigationApp: PreferredNavigationApp {
         didSet { save() }
     }
 
@@ -71,6 +96,15 @@ final class UserPreferences {
         }
     }
 
+    var consumptionL100Km: Double {
+        get { selectedVehicle.consumptionL100Km }
+        set {
+            var v = selectedVehicle
+            v.consumptionL100Km = newValue
+            selectedVehicle = v
+        }
+    }
+
     static let availableRadii: [Double] = [2, 5, 10, 20, 30, 50]
 
     private let defaults = UserDefaults.standard
@@ -105,6 +139,8 @@ final class UserPreferences {
         favoriteStationIds = Set(ids)
         let appearanceRaw = defaults.string(forKey: "appearance") ?? AppAppearance.system.rawValue
         appearance = AppAppearance(rawValue: appearanceRaw) ?? .system
+        let navRaw = defaults.string(forKey: "preferredNavigationApp") ?? PreferredNavigationApp.appleMaps.rawValue
+        preferredNavigationApp = PreferredNavigationApp(rawValue: navRaw) ?? .appleMaps
     }
 
     func addVehicle(_ vehicle: Vehicle) {
@@ -150,6 +186,7 @@ final class UserPreferences {
         defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
         defaults.set(Array(favoriteStationIds), forKey: "favoriteStationIds")
         defaults.set(appearance.rawValue, forKey: "appearance")
+        defaults.set(preferredNavigationApp.rawValue, forKey: "preferredNavigationApp")
     }
 }
 

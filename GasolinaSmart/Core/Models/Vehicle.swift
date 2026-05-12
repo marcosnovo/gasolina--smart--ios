@@ -77,22 +77,35 @@ struct Vehicle: Codable, Identifiable, Hashable {
     var brand: String
     var fuelType: FuelType
     var tankSizeLiters: Double
+    var consumptionL100Km: Double
     var vehicleType: VehicleType
     var vehicleColor: VehicleColor
 
     init(id: UUID = UUID(), name: String, brand: String = "",
          fuelType: FuelType, tankSizeLiters: Double = 50,
+         consumptionL100Km: Double = 7.0,
          vehicleType: VehicleType = .sedan, vehicleColor: VehicleColor = .silver) {
         self.id = id
         self.name = name
         self.brand = brand
         self.fuelType = fuelType
         self.tankSizeLiters = tankSizeLiters
+        self.consumptionL100Km = consumptionL100Km
         self.vehicleType = vehicleType
         self.vehicleColor = vehicleColor
     }
 
     static let defaultVehicle = Vehicle(name: "Mi coche", fuelType: .gasolina95, tankSizeLiters: 50)
+
+    static func defaultConsumption(for type: VehicleType) -> Double {
+        switch type {
+        case .sedan: 7.0
+        case .suv: 9.0
+        case .hatchback: 6.0
+        case .van: 10.0
+        case .motorcycle: 4.5
+        }
+    }
 
     static let commonBrands = [
         "Seat", "Renault", "Peugeot", "Citroën", "Volkswagen",
@@ -103,7 +116,7 @@ struct Vehicle: Codable, Identifiable, Hashable {
     ]
 
     enum CodingKeys: String, CodingKey {
-        case id, name, brand, fuelType, tankSizeLiters, vehicleType, vehicleColor
+        case id, name, brand, fuelType, tankSizeLiters, consumptionL100Km, vehicleType, vehicleColor
     }
 
     init(from decoder: Decoder) throws {
@@ -113,7 +126,10 @@ struct Vehicle: Codable, Identifiable, Hashable {
         brand = try container.decodeIfPresent(String.self, forKey: .brand) ?? ""
         fuelType = try container.decode(FuelType.self, forKey: .fuelType)
         tankSizeLiters = try container.decode(Double.self, forKey: .tankSizeLiters)
-        vehicleType = try container.decodeIfPresent(VehicleType.self, forKey: .vehicleType) ?? .sedan
+        let vType = try container.decodeIfPresent(VehicleType.self, forKey: .vehicleType) ?? .sedan
+        vehicleType = vType
         vehicleColor = try container.decodeIfPresent(VehicleColor.self, forKey: .vehicleColor) ?? .silver
+        consumptionL100Km = try container.decodeIfPresent(Double.self, forKey: .consumptionL100Km)
+            ?? Vehicle.defaultConsumption(for: vType)
     }
 }

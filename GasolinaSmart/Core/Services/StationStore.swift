@@ -10,7 +10,6 @@ final class StationStore {
     private(set) var lastUpdated: Date?
     private(set) var isUsingCache = false
     private(set) var cachedAveragePrice: Decimal?
-    private var useBackend = true
     private var loadedRadiusKm: Double = 0
     private var loadGeneration = 0
 
@@ -54,13 +53,8 @@ final class StationStore {
         let fetchRadius = max(radiusKm + 10, 30)
 
         do {
-            if useBackend {
-                guard myGeneration == loadGeneration else { return }
-                try await loadFromBackendAPI(location: location, radiusKm: fetchRadius, generation: myGeneration)
-            } else {
-                guard myGeneration == loadGeneration else { return }
-                try await loadFromDirectAPI(location: location, generation: myGeneration)
-            }
+            guard myGeneration == loadGeneration else { return }
+            try await loadFromBackendAPI(location: location, radiusKm: fetchRadius, generation: myGeneration)
             guard myGeneration == loadGeneration else { return }
             loadedRadiusKm = fetchRadius
             isUsingCache = false
@@ -110,9 +104,6 @@ final class StationStore {
             longitude: location.coordinate.longitude
         )
         guard generation == loadGeneration else { return }
-        if allStations.isEmpty {
-            allStations = result.nearby
-        }
         allStations = result.all
         lastUpdated = Date()
         await StationCache.shared.set(result.all)

@@ -16,7 +16,8 @@ enum WidgetDataProvider {
         vehicle: Vehicle,
         radiusKm: Double,
         stationCount: Int,
-        isDarkMode: Bool
+        isDarkMode: Bool,
+        navigationURLString: String
     ) {
         guard let defaults = sharedDefaults else { return }
 
@@ -66,7 +67,8 @@ enum WidgetDataProvider {
             radiusKm: radiusKm,
             stationCount: stationCount,
             lastUpdated: Date(),
-            isDarkMode: isDarkMode
+            isDarkMode: isDarkMode,
+            navigationURLString: navigationURLString
         )
 
         if let encoded = try? JSONEncoder().encode(data) {

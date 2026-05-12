@@ -95,6 +95,11 @@ struct MapView: View {
         .onChange(of: preferences.selectedFuelType) { _, _ in
             updateVisibleStations()
         }
+        .onChange(of: preferences.preferredNavigationApp) { _, _ in
+            if let location = locationManager.location {
+                updateWidgetData(location: location)
+            }
+        }
         .sheet(isPresented: Binding(
             get: { appState.showStationDetail && appState.selectedStation != nil },
             set: { if !$0 { appState.showStationDetail = false } }
@@ -328,11 +333,17 @@ struct MapView: View {
         }
 
         updateWidgetData(location: location)
+        recordPriceHistory()
         resolvePendingDeepLink()
     }
 
     private func updateWidgetData(location: CLLocation) {
         guard let cheapest = cachedCheapest else { return }
+        let navURL = NavigationHelper.navigationURL(
+            latitude: cheapest.latitude,
+            longitude: cheapest.longitude,
+            app: preferences.preferredNavigationApp
+        )
         WidgetDataProvider.update(
             cheapestStation: cheapest,
             fuelType: preferences.selectedFuelType,
@@ -342,8 +353,23 @@ struct MapView: View {
             vehicle: preferences.selectedVehicle,
             radiusKm: preferences.preferredRadiusKm,
             stationCount: visibleStations.count,
-            isDarkMode: preferences.appearance == .dark
+            isDarkMode: preferences.appearance == .dark,
+            navigationURLString: navURL.absoluteString
         )
+    }
+
+    private func recordPriceHistory() {
+        guard let cheapest = cachedCheapest,
+              let avg = cachedAveragePrice,
+              let cheapestPrice = cheapest.price(for: preferences.selectedFuelType) else { return }
+        Task {
+            await PriceHistoryStore.shared.record(
+                fuelType: preferences.selectedFuelType,
+                cheapest: cheapestPrice,
+                average: avg,
+                stationCount: visibleStations.count
+            )
+        }
     }
 
     private func resolvePendingDeepLink() {

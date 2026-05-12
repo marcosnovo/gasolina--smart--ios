@@ -32,6 +32,7 @@ struct WidgetStationData: Codable {
     let stationCount: Int
     let lastUpdated: Date
     let isDarkMode: Bool
+    let navigationURLString: String
 
     var deepLinkURL: URL {
         URL(string: "\(WidgetConstants.urlScheme)://station/\(stationId)")!
@@ -74,6 +75,7 @@ struct WidgetStationData: Codable {
         radiusKm: 5,
         stationCount: 12,
         lastUpdated: Date(),
-        isDarkMode: false
+        isDarkMode: false,
+        navigationURLString: "http://maps.apple.com/?daddr=40.4168,-3.7038&dirflg=d"
     )
 }

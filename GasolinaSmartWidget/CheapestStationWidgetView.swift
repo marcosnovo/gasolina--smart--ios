@@ -12,34 +12,14 @@ struct CheapestStationWidgetView: View {
         if let data = entry.data {
             switch family {
             case .systemSmall:
-                SmallWidgetView(data: data, mapSnapshot: entry.mapSnapshot)
+                SmallWidgetView(data: data)
             case .systemMedium:
-                MediumWidgetView(data: data, mapSnapshot: entry.mapSnapshot)
+                MediumWidgetView(data: data)
             default:
-                SmallWidgetView(data: data, mapSnapshot: entry.mapSnapshot)
+                SmallWidgetView(data: data)
             }
         } else {
             EmptyWidgetView()
-        }
-    }
-}
-
-// MARK: - Map Background
-
-private struct MapBackground: View {
-    let snapshotData: Data?
-
-    var body: some View {
-        GeometryReader { geo in
-            if let data = snapshotData, let uiImage = UIImage(data: data) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-            } else {
-                Color(.systemGray5)
-            }
         }
     }
 }
@@ -48,43 +28,56 @@ private struct MapBackground: View {
 
 private struct SmallWidgetView: View {
     let data: WidgetStationData
-    let mapSnapshot: Data?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            MapBackground(snapshotData: mapSnapshot)
-
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 4) {
                 Image(systemName: "fuelpump.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(widgetAccent)
-                    .clipShape(Circle())
-
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(data.priceFormatted)
-                            .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(Color(.label))
-                        Text("€/L")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(Color(.tertiaryLabel))
-                    }
-
-                    Text("\(data.brand) · \(data.distanceKm.distanceLabel)")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color(.secondaryLabel))
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
+                    .font(.system(size: 9, weight: .bold))
+                Text(data.fuelTypeShort)
+                    .font(.system(size: 10, weight: .semibold))
             }
-            .padding(10)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(8)
+            .foregroundStyle(widgetAccent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(widgetAccent.opacity(0.12))
+            .clipShape(Capsule())
+
+            Spacer(minLength: 4)
+
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(data.priceFormatted)
+                    .font(.system(size: 36, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color(.label))
+                    .minimumScaleFactor(0.7)
+                Text("€/L")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+
+            Text(data.brand)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color(.label))
+                .lineLimit(1)
+                .padding(.top, 1)
+
+            Text(data.distanceKm.distanceLabel)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.secondaryLabel))
+
+            if let saving = data.savingFormatted {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 9))
+                    Text(saving)
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(.green)
+                .padding(.top, 3)
+            }
         }
-        .widgetURL(data.deepLinkURL)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .widgetURL(data.navigationURL ?? data.deepLinkURL)
     }
 }
 
@@ -92,50 +85,78 @@ private struct SmallWidgetView: View {
 
 private struct MediumWidgetView: View {
     let data: WidgetStationData
-    let mapSnapshot: Data?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            MapBackground(snapshotData: mapSnapshot)
-
-            HStack(spacing: 10) {
-                Image(systemName: "fuelpump.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(widgetAccent)
-                    .clipShape(Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(data.brand)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(.label))
-                        .lineLimit(1)
-                    Text(data.distanceKm.distanceLabel)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color(.secondaryLabel))
-                }
-
-                Spacer(minLength: 0)
-
-                VStack(alignment: .trailing, spacing: 1) {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(data.priceFormatted)
-                            .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(Color(.label))
-                        Text("€/L")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color(.tertiaryLabel))
-                    }
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 4) {
+                    Image(systemName: "fuelpump.fill")
+                        .font(.system(size: 9, weight: .bold))
                     Text(data.fuelTypeShort)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color(.secondaryLabel))
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundStyle(widgetAccent)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(widgetAccent.opacity(0.12))
+                .clipShape(Capsule())
+
+                Spacer(minLength: 4)
+
+                Text(data.brand)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(.label))
+                    .lineLimit(1)
+
+                Text("\(data.address) · \(data.distanceKm.distanceLabel)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .lineLimit(1)
+                    .padding(.top, 1)
+
+                if let saving = data.savingFormatted {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 10))
+                        Text("Ahorras \(saving)")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(.green)
+                    .padding(.top, 4)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(10)
+
+            Spacer(minLength: 12)
+
+            VStack(alignment: .trailing, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(data.priceFormatted)
+                        .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Color(.label))
+                        .minimumScaleFactor(0.8)
+                    Text("€/L")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+
+                Spacer(minLength: 8)
+
+                if let navURL = data.navigationURL {
+                    Link(destination: navURL) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "location.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Navegar")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(widgetAccent)
+                        .clipShape(Capsule())
+                    }
+                }
+            }
         }
         .widgetURL(data.deepLinkURL)
     }
@@ -174,11 +195,11 @@ private extension Double {
 #Preview("Small", as: .systemSmall) {
     CheapestStationWidget()
 } timeline: {
-    CheapestStationEntry(date: .now, data: .placeholder, mapSnapshot: nil)
+    CheapestStationEntry(date: .now, data: .placeholder)
 }
 
 #Preview("Medium", as: .systemMedium) {
     CheapestStationWidget()
 } timeline: {
-    CheapestStationEntry(date: .now, data: .placeholder, mapSnapshot: nil)
+    CheapestStationEntry(date: .now, data: .placeholder)
 }

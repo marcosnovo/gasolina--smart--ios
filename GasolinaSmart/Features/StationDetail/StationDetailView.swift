@@ -8,6 +8,7 @@ struct StationDetailView: View {
     @Environment(StationStore.self) private var store
     @Environment(\.colorScheme) private var colorScheme
     @State private var showNavigationPicker = false
+    @State private var priceHistory: [DailyPriceRecord] = []
 
     private var distance: Double? {
         guard let location = locationManager.location else { return nil }
@@ -43,6 +44,9 @@ struct StationDetailView: View {
                 VStack(spacing: 0) {
                     heroSection
                     priceCard
+                    if !priceHistory.isEmpty {
+                        sparklineSection
+                    }
                     infoRows
                     allPricesSection
                     actionSection
@@ -50,7 +54,10 @@ struct StationDetailView: View {
                 }
                 .padding(.bottom, 32)
             }
-            .background(isDark ? Color.black : Color(.systemGroupedBackground))
+            .task {
+                priceHistory = await PriceHistoryStore.shared.history(for: preferences.selectedFuelType)
+            }
+            .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -74,7 +81,7 @@ struct StationDetailView: View {
             Text(station.brand)
                 .font(.system(size: 34, weight: .bold))
                 .tracking(-0.5)
-                .foregroundStyle(isDark ? .white : Color(.label))
+                .foregroundStyle(Color(.label))
 
             Text(station.name)
                 .font(.system(size: 15, weight: .medium))
@@ -134,7 +141,7 @@ struct StationDetailView: View {
             }
         }
         .padding(20)
-        .background(isDark ? Color(white: 0.08) : .white)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
@@ -163,6 +170,46 @@ struct StationDetailView: View {
         .foregroundStyle(opportunity.color)
     }
 
+    // MARK: - Sparkline
+
+    private var sparklineSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("TENDENCIA ZONA")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color(.tertiaryLabel))
+                    .tracking(1)
+                Spacer()
+                Text("\(priceHistory.count) días")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+
+            SparklineView(
+                values: priceHistory.map(\.averagePrice),
+                color: Theme.Colors.accent,
+                height: 56
+            )
+
+            HStack {
+                let prices = priceHistory.map(\.averagePrice)
+                if let minP = prices.min(), let maxP = prices.max() {
+                    Text(String(format: "%.3f", minP))
+                        .foregroundStyle(Theme.Colors.goodPrice)
+                    Spacer()
+                    Text(String(format: "%.3f", maxP))
+                        .foregroundStyle(Theme.Colors.expensivePrice)
+                }
+            }
+            .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
     // MARK: - Info Rows
 
     private var infoRows: some View {
@@ -176,10 +223,20 @@ struct StationDetailView: View {
                 )
             }
 
+            if let selectedPrice {
+                let costPer100 = selectedPrice * Decimal(preferences.consumptionL100Km)
+                infoRow(
+                    icon: "gauge.with.dots.needle.67percent",
+                    label: "Coste 100 km",
+                    value: costPer100.savingFormatted,
+                    valueColor: Theme.Colors.accent
+                )
+            }
+
             infoRow(
                 icon: "fuelpump.fill",
                 label: "Depósito",
-                value: "\(Int(preferences.tankSizeLiters)) L",
+                value: "\(Int(preferences.tankSizeLiters)) L · \(String(format: "%.1f", preferences.consumptionL100Km)) L/100km",
                 valueColor: nil
             )
 
@@ -189,7 +246,7 @@ struct StationDetailView: View {
                     icon: "creditcard.fill",
                     label: "Llenar depósito",
                     value: total.savingFormatted,
-                    valueColor: Theme.Colors.accent
+                    valueColor: nil
                 )
             }
 
@@ -203,7 +260,7 @@ struct StationDetailView: View {
                 )
             }
         }
-        .background(isDark ? Color(white: 0.08) : .white)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
@@ -219,13 +276,13 @@ struct StationDetailView: View {
 
                 Text(label)
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(isDark ? Color(white: 0.7) : Color(.secondaryLabel))
+                    .foregroundStyle(Color(.secondaryLabel))
 
                 Spacer()
 
                 Text(value)
                     .font(.system(size: 15, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(valueColor ?? (isDark ? .white : Color(.label)))
+                    .foregroundStyle(valueColor ?? (Color(.label)))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -240,7 +297,12 @@ struct StationDetailView: View {
     // MARK: - All Prices
 
     private var allPricesSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let visibleFuels = FuelType.allCases.compactMap { fuel -> (FuelType, Decimal)? in
+            guard let price = station.price(for: fuel) else { return nil }
+            return (fuel, price)
+        }
+
+        return VStack(alignment: .leading, spacing: 0) {
             Text("PRECIOS")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color(.tertiaryLabel))
@@ -249,49 +311,43 @@ struct StationDetailView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 8)
 
-            ForEach(Array(FuelType.allCases.enumerated()), id: \.element.id) { index, fuel in
-                if let price = station.price(for: fuel) {
-                    let isSelected = fuel == preferences.selectedFuelType
-                    let isLastPrice = isLastVisibleFuel(fuel)
+            ForEach(Array(visibleFuels.enumerated()), id: \.element.0.id) { index, item in
+                let (fuel, price) = item
+                let isSelected = fuel == preferences.selectedFuelType
+                let isLast = index == visibleFuels.count - 1
 
-                    VStack(spacing: 0) {
-                        HStack(spacing: 12) {
-                            Image(systemName: fuel.icon)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(isSelected ? Theme.Colors.accent : (isDark ? Color(white: 0.4) : Color(.tertiaryLabel)))
-                                .frame(width: 20, alignment: .center)
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        Image(systemName: fuel.icon)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(isSelected ? Theme.Colors.accent : (Color(.tertiaryLabel)))
+                            .frame(width: 20, alignment: .center)
 
-                            Text(fuel.displayName)
-                                .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                                .foregroundStyle(isDark ? .white : Color(.label))
+                        Text(fuel.displayName)
+                            .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                            .foregroundStyle(Color(.label))
 
-                            Spacer()
+                        Spacer()
 
-                            Text("\(price.priceFormatted) €/L")
-                                .font(.system(size: 15, weight: isSelected ? .bold : .regular, design: .rounded).monospacedDigit())
-                                .foregroundStyle(isSelected ? Theme.Colors.accent : (isDark ? Color(white: 0.5) : Color(.secondaryLabel)))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(isSelected ? Theme.Colors.accent.opacity(isDark ? 0.12 : 0.06) : .clear)
+                        Text("\(price.priceFormatted) €/L")
+                            .font(.system(size: 15, weight: isSelected ? .bold : .regular, design: .rounded).monospacedDigit())
+                            .foregroundStyle(isSelected ? Theme.Colors.accent : (Color(.secondaryLabel)))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(isSelected ? Theme.Colors.accent.opacity(isDark ? 0.12 : 0.06) : .clear)
 
-                        if !isLastPrice {
-                            Divider()
-                                .padding(.leading, 48)
-                        }
+                    if !isLast {
+                        Divider()
+                            .padding(.leading, 48)
                     }
                 }
             }
         }
-        .background(isDark ? Color(white: 0.08) : .white)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
-    }
-
-    private func isLastVisibleFuel(_ fuel: FuelType) -> Bool {
-        let visibleFuels = FuelType.allCases.filter { station.price(for: $0) != nil }
-        return visibleFuels.last == fuel
     }
 
     // MARK: - Action

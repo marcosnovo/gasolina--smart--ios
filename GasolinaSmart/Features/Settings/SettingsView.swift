@@ -12,6 +12,7 @@ struct SettingsView: View {
             Form {
                 vehiclesSection
                 appearanceSection
+                navigationSection
                 searchSection
                 notificationsSection
                 infoSection
@@ -110,6 +111,36 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
+        }
+    }
+
+    private var navigationSection: some View {
+        Section {
+            ForEach(PreferredNavigationApp.allCases, id: \.self) { app in
+                Button {
+                    preferences.preferredNavigationApp = app
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: app.icon)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(Theme.Colors.accent)
+                            .frame(width: 28)
+                        Text(app.displayName)
+                            .foregroundStyle(Color(.label))
+                        Spacer()
+                        if preferences.preferredNavigationApp == app {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Theme.Colors.accent)
+                                .fontWeight(.semibold)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        } header: {
+            Text("Navegación")
+        } footer: {
+            Text("Servicio de navegación para el widget y accesos directos.")
         }
     }
 
@@ -232,6 +263,7 @@ struct VehicleEditSheet: View {
     @State private var brand: String
     @State private var fuelType: FuelType
     @State private var tankSize: Double
+    @State private var consumptionL100Km: Double
     @State private var vehicleType: VehicleType
     @State private var vehicleColor: VehicleColor
     @State private var brandSuggestions: [String] = []
@@ -245,6 +277,7 @@ struct VehicleEditSheet: View {
         _brand = State(initialValue: vehicle?.brand ?? "")
         _fuelType = State(initialValue: v.fuelType)
         _tankSize = State(initialValue: v.tankSizeLiters)
+        _consumptionL100Km = State(initialValue: v.consumptionL100Km)
         _vehicleType = State(initialValue: v.vehicleType)
         _vehicleColor = State(initialValue: v.vehicleColor)
         self.isEditing = vehicle != nil
@@ -262,6 +295,7 @@ struct VehicleEditSheet: View {
                 colorSection
                 fuelSection
                 tankSection
+                consumptionSection
             }
             .navigationTitle(isEditing ? "Editar vehículo" : "Nuevo vehículo")
             .navigationBarTitleDisplayMode(.inline)
@@ -285,7 +319,8 @@ struct VehicleEditSheet: View {
 
     private var previewVehicle: Vehicle {
         Vehicle(name: name, brand: brand, fuelType: fuelType,
-                tankSizeLiters: tankSize, vehicleType: vehicleType, vehicleColor: vehicleColor)
+                tankSizeLiters: tankSize, consumptionL100Km: consumptionL100Km,
+                vehicleType: vehicleType, vehicleColor: vehicleColor)
     }
 
     private var previewSection: some View {
@@ -357,7 +392,13 @@ struct VehicleEditSheet: View {
             HStack(spacing: 12) {
                 ForEach(VehicleType.allCases, id: \.self) { type in
                     Button {
-                        withAnimation(.snappy(duration: 0.2)) { vehicleType = type }
+                        withAnimation(.snappy(duration: 0.2)) {
+                            let wasDefault = consumptionL100Km == Vehicle.defaultConsumption(for: vehicleType)
+                            vehicleType = type
+                            if wasDefault || !isEditing {
+                                consumptionL100Km = Vehicle.defaultConsumption(for: type)
+                            }
+                        }
                     } label: {
                         VStack(spacing: 4) {
                             Image(systemName: type.icon)
@@ -459,6 +500,25 @@ struct VehicleEditSheet: View {
         }
     }
 
+    private var consumptionSection: some View {
+        Section {
+            HStack {
+                Text("Consumo medio")
+                Spacer()
+                TextField("L/100km", value: $consumptionL100Km, format: .number.precision(.fractionLength(1)))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 80)
+                Text("L/100km")
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+        } header: {
+            Text("Consumo")
+        } footer: {
+            Text("Se usa para calcular el coste real por kilómetro.")
+        }
+    }
+
     private func updateBrandSuggestions(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard trimmed.count >= 1 else {
@@ -482,6 +542,7 @@ struct VehicleEditSheet: View {
             brand: trimmedBrand,
             fuelType: fuelType,
             tankSizeLiters: tankSize,
+            consumptionL100Km: consumptionL100Km,
             vehicleType: vehicleType,
             vehicleColor: vehicleColor
         )
