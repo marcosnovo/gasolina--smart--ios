@@ -1,9 +1,9 @@
 import { saveStations, getCountryMetaValue } from "../database";
 
+// /exports/json returns the full dataset in one request (~10MB, ~9700 records).
+// Confirmed 200 from Railway with all User-Agent variants on 2026-05-13.
 const API_URL =
-  "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records";
-
-const PAGE_SIZE = 100;
+  "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/exports/json";
 
 interface FranceRecord {
   id: number;
@@ -26,11 +26,6 @@ interface FranceRecord {
   gplc_maj?: string | null;
 }
 
-interface FranceAPIResponse {
-  total_count: number;
-  results: FranceRecord[];
-}
-
 const FUEL_FIELDS: Array<{
   priceKey: keyof FranceRecord;
   majKey: keyof FranceRecord;
@@ -44,15 +39,16 @@ const FUEL_FIELDS: Array<{
   { priceKey: "gplc_prix", majKey: "gplc_maj", fuelType: "glp" },
 ];
 
-async function fetchPage(offset: number): Promise<FranceAPIResponse> {
-  const url = `${API_URL}?limit=${PAGE_SIZE}&offset=${offset}&select=id,adresse,ville,cp,departement,geom,gazole_prix,gazole_maj,sp95_prix,sp95_maj,sp98_prix,sp98_maj,e10_prix,e10_maj,e85_prix,e85_maj,gplc_prix,gplc_maj`;
+export async function fetchFrance(): Promise<{ count: number; duration: number }> {
+  const start = Date.now();
+  console.log("[fetcher:FR] Starting fetch from French government API (full export)...");
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), 60_000);
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(API_URL, {
       headers: {
         "User-Agent": "GasolinaSmart-Backend/1.0",
         Accept: "application/json",
@@ -63,44 +59,12 @@ async function fetchPage(offset: number): Promise<FranceAPIResponse> {
     clearTimeout(timeout);
   }
 
-  if (response.status === 429) {
-    const retryAfter = parseInt(response.headers.get("Retry-After") || "10");
-    console.warn(`[fetcher:FR] Rate limited, waiting ${retryAfter}s...`);
-    await new Promise((r) => setTimeout(r, retryAfter * 1000));
-    return fetchPage(offset);
-  }
-
   if (!response.ok) {
-    throw new Error(`France API returned ${response.status} at offset ${offset}`);
+    throw new Error(`France API returned ${response.status}`);
   }
 
-  return (await response.json()) as FranceAPIResponse;
-}
-
-export async function fetchFrance(): Promise<{ count: number; duration: number }> {
-  const start = Date.now();
-  console.log("[fetcher:FR] Starting fetch from French government API (paginated records)...");
-
-  const allRecords: FranceRecord[] = [];
-  let offset = 0;
-  let totalCount = 0;
-
-  // Paginate through all records
-  while (true) {
-    const page = await fetchPage(offset);
-    if (offset === 0) {
-      totalCount = page.total_count;
-      console.log(`[fetcher:FR] Total stations in dataset: ${totalCount}`);
-    }
-
-    allRecords.push(...page.results);
-    console.log(`[fetcher:FR] Fetched ${allRecords.length}/${totalCount} records`);
-
-    if (page.results.length < PAGE_SIZE || allRecords.length >= totalCount) break;
-    offset += PAGE_SIZE;
-
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  const records = (await response.json()) as FranceRecord[];
+  console.log(`[fetcher:FR] Received ${records.length} records from export`);
 
   let skippedNoGeo = 0;
   let skippedNoPrices = 0;
@@ -119,7 +83,7 @@ export async function fetchFrance(): Promise<{ count: number; duration: number }
     updatedAt: string;
   }> = [];
 
-  for (const rec of allRecords) {
+  for (const rec of records) {
     if (!rec.geom || rec.geom.lat == null || rec.geom.lon == null || isNaN(rec.geom.lat) || isNaN(rec.geom.lon)) {
       skippedNoGeo++;
       continue;
