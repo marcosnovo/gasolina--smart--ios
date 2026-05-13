@@ -201,7 +201,12 @@ final class UserPreferences {
         }
         showChargingStations = defaults.object(forKey: "showChargingStations") as? Bool ?? false
         let countryRaw = defaults.string(forKey: "selectedCountry") ?? Country.spain.rawValue
-        selectedCountry = Country(rawValue: countryRaw) ?? .spain
+        if let country = Country(rawValue: countryRaw) {
+            selectedCountry = country
+        } else {
+            selectedCountry = .spain
+            defaults.set(Country.spain.rawValue, forKey: "selectedCountry")
+        }
         let langRaw = defaults.string(forKey: "appLanguage") ?? AppLanguage.system.rawValue
         appLanguage = AppLanguage(rawValue: langRaw) ?? .system
     }

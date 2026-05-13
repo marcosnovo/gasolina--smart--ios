@@ -28,11 +28,10 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
     func displayName(for country: Country) -> String {
         switch (self, country) {
         case (.gasolina95, .spain): return "Gasolina 95"
-        case (.gasolina95, .portugal): return "Gasolina 95"
         case (.gasolina98, .spain): return "Gasolina 98"
         case (.gasolina98, .uk): return "Super Unleaded"
         case (.gasolina98, .france): return "SP98"
-        case (.dieselA, .spain), (.dieselA, .portugal): return "Diésel A"
+        case (.dieselA, .spain): return "Diésel A"
         case (.dieselA, .uk): return "Diesel"
         case (.dieselA, .france): return "Gazole"
         case (.dieselA, .germany): return "Diesel"
@@ -40,7 +39,6 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case (.dieselPremium, .uk): return "Premium Diesel"
         case (.glp, .spain): return "GLP"
         case (.glp, .france): return "GPLc"
-        case (.glp, .portugal): return "GPL Auto"
         case (.e5, .uk): return "Unleaded (E5)"
         case (.e5, .france): return "SP95"
         case (.e5, .germany): return "Super E5"
