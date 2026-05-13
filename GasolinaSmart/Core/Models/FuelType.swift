@@ -9,6 +9,7 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
     case e5 = "e5"
     case e10 = "e10"
     case e85 = "e85"
+    case gnc = "gnc"
 
     nonisolated var id: String { rawValue }
 
@@ -22,6 +23,7 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .e5: "E5"
         case .e10: "E10"
         case .e85: "E85"
+        case .gnc: "GNC"
         }
     }
 
@@ -46,6 +48,13 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case (.e10, .france): return "E10"
         case (.e10, .germany): return "Super E10"
         case (.e85, .france): return "Superéthanol E85"
+        case (.e5, .italy): return "Benzina"
+        case (.gasolina98, .italy): return "Benzina Plus"
+        case (.dieselA, .italy): return "Gasolio"
+        case (.dieselPremium, .italy): return "Gasolio Premium"
+        case (.glp, .italy): return "GPL"
+        case (.gnc, .italy): return "Metano"
+        case (.gnc, _): return "CNG"
         default: return displayName
         }
     }
@@ -60,6 +69,7 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .e5: "E5"
         case .e10: "E10"
         case .e85: "E85"
+        case .gnc: "GNC"
         }
     }
 
@@ -83,14 +93,16 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .e5: "E5"
         case .e10: "E10"
         case .e85: "E85"
+        case .gnc: "GNC"
         }
     }
 
     var unit: String { "€/L" }
 
     func unit(for country: Country) -> String {
-        switch country {
-        case .uk: return "p/L"
+        switch (self, country) {
+        case (.gnc, _): return "€/kg"
+        case (_, .uk): return "p/L"
         default: return "€/L"
         }
     }
@@ -105,6 +117,7 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .e5: "Precio Gasolina 95 E5"
         case .e10: "Precio Gasolina 95 E10"
         case .e85: ""
+        case .gnc: ""
         }
     }
 
@@ -114,6 +127,7 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .dieselA, .dieselPremium: "fuelpump.fill"
         case .glp: "leaf"
         case .e85: "leaf.fill"
+        case .gnc: "flame"
         }
     }
 }

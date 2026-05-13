@@ -43,7 +43,7 @@ struct GasolinaSmartApp: App {
             return
         }
 
-        let countryPrefixes = ["ES_", "GB_", "FR_", "DE_"]
+        let countryPrefixes = ["ES_", "GB_", "FR_", "DE_", "IT_"]
         let stationId: String
         if countryPrefixes.contains(where: { rawId.hasPrefix($0) }) {
             stationId = rawId
