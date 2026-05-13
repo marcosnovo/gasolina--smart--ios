@@ -39,6 +39,7 @@ final class FuelDataSourceRegistry: Observable {
         register(UKDataSource())
         register(FranceDataSource())
         register(GermanyDataSource())
+        register(ItalyDataSource())
     }
 
     func register(_ source: any FuelDataSource) {
