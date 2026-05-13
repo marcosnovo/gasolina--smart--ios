@@ -30,6 +30,43 @@ app.use("/*", cors());
 
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
+app.get("/api/health", (c) => {
+  const stats = queryCountryStats();
+  const statsMap = new Map(stats.map((s) => [s.country, s]));
+
+  const countries: Record<string, unknown> = {};
+  for (const code of ["ES", "GB", "FR", "DE"]) {
+    const stat = statsMap.get(code);
+    const lastError = getCountryMetaValue(code, "last_error") || null;
+    const lastFetch = stat?.last_fetched_at ?? null;
+    const stationsCount = stat?.station_count ?? 0;
+
+    let status: string;
+    let reason: string | undefined;
+
+    if (lastError && lastError.includes("PAUSED:")) {
+      status = "paused";
+      reason = lastError.replace(/^.*PAUSED:\s*/, "");
+    } else if (lastError) {
+      status = "error";
+      reason = lastError;
+    } else if (stationsCount > 0) {
+      status = "ok";
+    } else {
+      status = "waiting";
+    }
+
+    countries[code] = {
+      status,
+      stationsCount,
+      lastFetch,
+      ...(reason ? { reason } : {}),
+    };
+  }
+
+  return c.json({ ok: true, countries });
+});
+
 // --- Metadata ---
 
 app.get("/api/meta", (c) => {
@@ -268,6 +305,18 @@ app.get("/api/debug/test-apis", async (c) => {
   results.uk_devportal = await probe("fuel-finder portal", "https://developer.fuel-finder.service.gov.uk/");
   results.uk_api = await probe("fuel-finder API", "https://developer.fuel-finder.service.gov.uk/public-api/stations/nearby?latitude=51.5&longitude=-0.12&radius=5", {
     "User-Agent": "GasolinaSmart-Backend/1.0",
+    Accept: "application/json",
+  });
+
+  // --- France: /exports/json with 3 UA variants ---
+  const frExport = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/exports/json?limit=1";
+  results.france_export_default = await probe("FR export default", frExport);
+  results.france_export_browser = await probe("FR export browser", frExport, {
+    "User-Agent": "Mozilla/5.0 (compatible)",
+    Accept: "application/json",
+  });
+  results.france_export_polite = await probe("FR export polite", frExport, {
+    "User-Agent": "GasolinaSmart/1.0 (+contact@gasolina-smart.app)",
     Accept: "application/json",
   });
 

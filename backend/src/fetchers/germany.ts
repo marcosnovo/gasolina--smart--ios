@@ -112,8 +112,7 @@ async function fetchArea(lat: number, lng: number): Promise<TKStation[]> {
 
 export async function fetchGermany(): Promise<{ count: number; duration: number }> {
   if (!TANKERKOENIG_API_KEY) {
-    console.warn("[fetcher:DE] TANKERKOENIG_API_KEY not set, skipping.");
-    return { count: 0, duration: 0 };
+    throw new Error("PAUSED: TANKERKOENIG_API_KEY not set");
   }
 
   const start = Date.now();

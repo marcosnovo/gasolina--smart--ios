@@ -162,10 +162,13 @@ function mapStation(dto: UKStation): {
 
 export async function fetchUK(): Promise<{ count: number; duration: number }> {
   const start = Date.now();
-  console.log(`[fetcher:GB] Starting fetch from UK Fuel Finder API (${UK_GRID.length} points)...`);
+  const total = UK_GRID.length;
+  console.log(`[fetcher:GB] Starting fetch from UK Fuel Finder API (${total} points)...`);
 
   const seen = new Set<string>();
   const allStations: ReturnType<typeof mapStation>[] = [];
+  let failedCount = 0;
+  let lastPointError = "";
 
   for (const point of UK_GRID) {
     try {
@@ -179,10 +182,15 @@ export async function fetchUK(): Promise<{ count: number; duration: number }> {
       }
       console.log(`[fetcher:GB] ${point.label}: +${stations.length} raw, ${seen.size} unique total`);
     } catch (e) {
-      console.error(`[fetcher:GB] Failed for ${point.label}:`, e);
+      failedCount++;
+      lastPointError = e instanceof Error ? e.message : String(e);
+      console.error(`[fetcher:GB] Failed for ${point.label}: ${lastPointError}`);
     }
-    // Small delay to avoid rate limiting
     await new Promise((r) => setTimeout(r, 200));
+  }
+
+  if (failedCount === total) {
+    throw new Error(`${failedCount}/${total} grid points failed. Last error: ${lastPointError}`);
   }
 
   const valid = allStations.filter((s): s is NonNullable<typeof s> => s !== null);
@@ -192,7 +200,8 @@ export async function fetchUK(): Promise<{ count: number; duration: number }> {
   }
 
   const duration = Date.now() - start;
-  console.log(`[fetcher:GB] Saved ${valid.length} stations in ${duration}ms`);
+  const failNote = failedCount > 0 ? ` (${failedCount}/${total} points failed)` : "";
+  console.log(`[fetcher:GB] Saved ${valid.length} stations in ${duration}ms${failNote}`);
 
   return { count: valid.length, duration };
 }
