@@ -34,7 +34,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
     case uk = "GB"
     case france = "FR"
     case germany = "DE"
-    case portugal = "PT"
 
     var id: String { rawValue }
 
@@ -44,7 +43,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .uk: "United Kingdom"
         case .france: "France"
         case .germany: "Deutschland"
-        case .portugal: "Portugal"
         }
     }
 
@@ -54,20 +52,19 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .uk: "🇬🇧"
         case .france: "🇫🇷"
         case .germany: "🇩🇪"
-        case .portugal: "🇵🇹"
         }
     }
 
     var currency: String {
         switch self {
-        case .spain, .france, .germany, .portugal: "EUR"
+        case .spain, .france, .germany: "EUR"
         case .uk: "GBP"
         }
     }
 
     var currencySymbol: String {
         switch self {
-        case .spain, .france, .germany, .portugal: "€"
+        case .spain, .france, .germany: "€"
         case .uk: "£"
         }
     }
@@ -80,7 +77,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .uk: .e10
         case .france: .e10
         case .germany: .e10
-        case .portugal: .gasolina95
         }
     }
 
@@ -94,8 +90,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
             [.e10, .e5, .gasolina98, .dieselA, .e85, .glp]
         case .germany:
             [.e5, .e10, .dieselA]
-        case .portugal:
-            [.gasolina95, .dieselA, .glp]
         }
     }
 
@@ -109,8 +103,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
             BoundingBox(minLatitude: 41.3, maxLatitude: 51.1, minLongitude: -5.2, maxLongitude: 9.6)
         case .germany:
             BoundingBox(minLatitude: 47.3, maxLatitude: 55.1, minLongitude: 5.9, maxLongitude: 15.0)
-        case .portugal:
-            BoundingBox(minLatitude: 36.9, maxLatitude: 42.2, minLongitude: -9.5, maxLongitude: -6.2)
         }
     }
 
@@ -119,7 +111,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .germany: .realtime
         case .uk: .within30min
         case .spain, .france: .within1hour
-        case .portugal: .daily
         }
     }
 
@@ -129,7 +120,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .uk: CLLocationCoordinate2D(latitude: 51.5074, longitude: -0.1278)
         case .france: CLLocationCoordinate2D(latitude: 48.8566, longitude: 2.3522)
         case .germany: CLLocationCoordinate2D(latitude: 52.5200, longitude: 13.4050)
-        case .portugal: CLLocationCoordinate2D(latitude: 38.7223, longitude: -9.1393)
         }
     }
 
@@ -145,8 +135,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
             "Licence Ouverte / Open Licence.\nSource: data.economie.gouv.fr"
         case .germany:
             "Spritpreis-Daten von Tankerkönig (tankerkoenig.de),\nlizenziert unter CC BY 4.0"
-        case .portugal:
-            "Direção-Geral de Energia e Geologia (DGEG)"
         }
     }
 
