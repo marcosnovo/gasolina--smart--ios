@@ -12,11 +12,13 @@ import {
 } from "./database";
 import { fetchFromMinisterio, getLastFetchTime, shouldFetch } from "./fetcher";
 import { fetchUK, shouldFetchUK } from "./fetchers/uk";
+import { fetchFrance, shouldFetchFrance } from "./fetchers/france";
 
 const app = new Hono();
 
 const FETCH_INTERVAL = parseInt(process.env.FETCH_INTERVAL_MINUTES || "15");
 const UK_FETCH_INTERVAL = parseInt(process.env.UK_FETCH_INTERVAL_MINUTES || "15");
+const FR_FETCH_INTERVAL = parseInt(process.env.FR_FETCH_INTERVAL_MINUTES || "30");
 const PORT = parseInt(process.env.PORT || "3000");
 
 app.use("/*", cors());
@@ -249,6 +251,25 @@ async function startCron() {
       console.error("[cron:GB] Fetch failed:", e);
     }
   }, UK_FETCH_INTERVAL * 60 * 1000);
+
+  // --- France ---
+  if (shouldFetchFrance(FR_FETCH_INTERVAL)) {
+    console.log("[cron:FR] No recent data, fetching now...");
+    try {
+      await fetchFrance();
+    } catch (e) {
+      console.error("[cron:FR] Initial fetch failed:", e);
+    }
+  }
+
+  setInterval(async () => {
+    console.log("[cron:FR] Scheduled fetch starting...");
+    try {
+      await fetchFrance();
+    } catch (e) {
+      console.error("[cron:FR] Fetch failed:", e);
+    }
+  }, FR_FETCH_INTERVAL * 60 * 1000);
 }
 
 // --- Start ---
