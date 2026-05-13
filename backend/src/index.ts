@@ -6,7 +6,7 @@ import {
   queryCheapest,
   queryAveragePrice,
   queryStationDetail,
-  getMetaValue,
+  getCountryMetaValue,
 } from "./database";
 import { fetchFromMinisterio, getLastFetchTime, shouldFetch } from "./fetcher";
 
@@ -24,9 +24,10 @@ app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOStri
 // --- Metadata ---
 
 app.get("/api/meta", (c) => {
+  const country = c.req.query("country") || "ES";
   return c.json({
-    last_fetch: getMetaValue("last_fetch"),
-    station_count: parseInt(getMetaValue("station_count") || "0"),
+    last_fetch: getCountryMetaValue(country, "last_fetch"),
+    station_count: parseInt(getCountryMetaValue(country, "station_count") || "0"),
     fetch_interval_minutes: FETCH_INTERVAL,
   });
 });
@@ -39,20 +40,21 @@ app.get("/api/stations", (c) => {
   const radius = parseFloat(c.req.query("radius") || "10");
   const fuel = c.req.query("fuel");
   const limit = parseInt(c.req.query("limit") || "50");
+  const country = c.req.query("country") || "ES";
 
   if (isNaN(lat) || isNaN(lon)) {
     return c.json({ error: "lat and lon are required" }, 400);
   }
 
-  const stations = queryStationsNearby(lat, lon, radius, fuel, limit);
-  const avg = fuel ? queryAveragePrice(lat, lon, radius, fuel) : null;
+  const stations = queryStationsNearby(lat, lon, radius, country, fuel, limit);
+  const avg = fuel ? queryAveragePrice(lat, lon, radius, fuel, country) : null;
 
   return c.json({
     stations,
     count: stations.length,
     average_price: avg?.average ?? null,
     zone_count: avg?.count ?? null,
-    last_updated: getMetaValue("last_fetch"),
+    last_updated: getCountryMetaValue(country, "last_fetch"),
   });
 });
 
@@ -63,13 +65,14 @@ app.get("/api/stations/cheapest", (c) => {
   const lon = parseFloat(c.req.query("lon") || "");
   const radius = parseFloat(c.req.query("radius") || "10");
   const fuel = c.req.query("fuel") || "gasolina95";
+  const country = c.req.query("country") || "ES";
 
   if (isNaN(lat) || isNaN(lon)) {
     return c.json({ error: "lat and lon are required" }, 400);
   }
 
-  const station = queryCheapest(lat, lon, radius, fuel);
-  const avg = queryAveragePrice(lat, lon, radius, fuel);
+  const station = queryCheapest(lat, lon, radius, fuel, country);
+  const avg = queryAveragePrice(lat, lon, radius, fuel, country);
 
   if (!station) {
     return c.json({ station: null, average_price: null });

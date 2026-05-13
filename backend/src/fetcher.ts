@@ -1,4 +1,4 @@
-import { saveStations, getMetaValue } from "./database";
+import { saveStations, getCountryMetaValue } from "./database";
 
 const MINISTERIO_URL =
   "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/";
@@ -93,7 +93,7 @@ export async function fetchFromMinisterio(): Promise<{
     if (Object.keys(prices).length === 0) continue;
 
     stations.push({
-      id,
+      id: `ES_${id}`,
       name: (raw["Rótulo"] || "Estación").trim(),
       brand: (raw["Rótulo"] || "").trim(),
       address: (raw["Dirección"] || "").trim(),
@@ -106,7 +106,7 @@ export async function fetchFromMinisterio(): Promise<{
     });
   }
 
-  saveStations(stations);
+  saveStations("ES", stations);
 
   const duration = Date.now() - start;
   console.log(
@@ -117,7 +117,7 @@ export async function fetchFromMinisterio(): Promise<{
 }
 
 export function getLastFetchTime(): string | null {
-  return getMetaValue("last_fetch");
+  return getCountryMetaValue("ES", "last_fetch");
 }
 
 export function shouldFetch(intervalMinutes: number): boolean {
