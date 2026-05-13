@@ -1,15 +1,16 @@
 import { saveStations, getCountryMetaValue } from "../database";
 
 const API_URL =
-  "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/exports/json";
+  "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records";
 
-interface FranceExportRecord {
+const PAGE_SIZE = 100;
+
+interface FranceRecord {
   id: number;
   adresse?: string;
   ville?: string;
   cp?: string;
   departement?: string;
-  region?: string;
   geom?: { lat: number; lon: number };
   gazole_prix?: number | null;
   gazole_maj?: string | null;
@@ -25,9 +26,14 @@ interface FranceExportRecord {
   gplc_maj?: string | null;
 }
 
+interface FranceAPIResponse {
+  total_count: number;
+  results: FranceRecord[];
+}
+
 const FUEL_FIELDS: Array<{
-  priceKey: keyof FranceExportRecord;
-  majKey: keyof FranceExportRecord;
+  priceKey: keyof FranceRecord;
+  majKey: keyof FranceRecord;
   fuelType: string;
 }> = [
   { priceKey: "gazole_prix", majKey: "gazole_maj", fuelType: "dieselA" },
@@ -38,16 +44,15 @@ const FUEL_FIELDS: Array<{
   { priceKey: "gplc_prix", majKey: "gplc_maj", fuelType: "glp" },
 ];
 
-export async function fetchFrance(): Promise<{ count: number; duration: number }> {
-  const start = Date.now();
-  console.log("[fetcher:FR] Starting fetch from French government API (full export)...");
+async function fetchPage(offset: number): Promise<FranceAPIResponse> {
+  const url = `${API_URL}?limit=${PAGE_SIZE}&offset=${offset}&select=id,adresse,ville,cp,departement,geom,gazole_prix,gazole_maj,sp95_prix,sp95_maj,sp98_prix,sp98_maj,e10_prix,e10_maj,e85_prix,e85_maj,gplc_prix,gplc_maj`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const timeout = setTimeout(() => controller.abort(), 15_000);
 
   let response: Response;
   try {
-    response = await fetch(API_URL, {
+    response = await fetch(url, {
       headers: {
         "User-Agent": "GasolinaSmart-Backend/1.0",
         Accept: "application/json",
@@ -58,12 +63,44 @@ export async function fetchFrance(): Promise<{ count: number; duration: number }
     clearTimeout(timeout);
   }
 
-  if (!response.ok) {
-    throw new Error(`France API returned ${response.status}`);
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get("Retry-After") || "10");
+    console.warn(`[fetcher:FR] Rate limited, waiting ${retryAfter}s...`);
+    await new Promise((r) => setTimeout(r, retryAfter * 1000));
+    return fetchPage(offset);
   }
 
-  const records = (await response.json()) as FranceExportRecord[];
-  console.log(`[fetcher:FR] Received ${records.length} records from export`);
+  if (!response.ok) {
+    throw new Error(`France API returned ${response.status} at offset ${offset}`);
+  }
+
+  return (await response.json()) as FranceAPIResponse;
+}
+
+export async function fetchFrance(): Promise<{ count: number; duration: number }> {
+  const start = Date.now();
+  console.log("[fetcher:FR] Starting fetch from French government API (paginated records)...");
+
+  const allRecords: FranceRecord[] = [];
+  let offset = 0;
+  let totalCount = 0;
+
+  // Paginate through all records
+  while (true) {
+    const page = await fetchPage(offset);
+    if (offset === 0) {
+      totalCount = page.total_count;
+      console.log(`[fetcher:FR] Total stations in dataset: ${totalCount}`);
+    }
+
+    allRecords.push(...page.results);
+    console.log(`[fetcher:FR] Fetched ${allRecords.length}/${totalCount} records`);
+
+    if (page.results.length < PAGE_SIZE || allRecords.length >= totalCount) break;
+    offset += PAGE_SIZE;
+
+    await new Promise((r) => setTimeout(r, 200));
+  }
 
   let skippedNoGeo = 0;
   let skippedNoPrices = 0;
@@ -82,7 +119,7 @@ export async function fetchFrance(): Promise<{ count: number; duration: number }
     updatedAt: string;
   }> = [];
 
-  for (const rec of records) {
+  for (const rec of allRecords) {
     if (!rec.geom || rec.geom.lat == null || rec.geom.lon == null || isNaN(rec.geom.lat) || isNaN(rec.geom.lon)) {
       skippedNoGeo++;
       continue;
