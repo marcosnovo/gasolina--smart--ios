@@ -1,148 +1,73 @@
 import { saveStations, getCountryMetaValue } from "../database";
 
 const API_URL =
-  "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records";
+  "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/exports/json";
 
-const FUEL_MAP: Record<string, string> = {
-  Gazole: "dieselA",
-  SP95: "e5",
-  SP98: "gasolina98",
-  E10: "e10",
-  E85: "e85",
-  GPLc: "glp",
-};
-
-interface FranceRecord {
-  id: string;
+interface FranceExportRecord {
+  id: number;
   adresse?: string;
   ville?: string;
   cp?: string;
+  departement?: string;
+  region?: string;
   geom?: { lat: number; lon: number };
-  prix_nom?: string;
-  prix_valeur?: number;
-  prix_maj?: string;
-  marque?: string;
+  gazole_prix?: number | null;
+  gazole_maj?: string | null;
+  sp95_prix?: number | null;
+  sp95_maj?: string | null;
+  sp98_prix?: number | null;
+  sp98_maj?: string | null;
+  e10_prix?: number | null;
+  e10_maj?: string | null;
+  e85_prix?: number | null;
+  e85_maj?: string | null;
+  gplc_prix?: number | null;
+  gplc_maj?: string | null;
 }
 
-interface FranceAPIResponse {
-  total_count: number;
-  results: FranceRecord[];
-}
-
-const PAGE_SIZE = 100;
-
-// Grid of French cities to cover the country
-const FR_GRID: Array<{ lat: number; lng: number; label: string }> = [
-  { lat: 48.86, lng: 2.35, label: "Paris" },
-  { lat: 43.30, lng: 5.37, label: "Marseille" },
-  { lat: 45.76, lng: 4.84, label: "Lyon" },
-  { lat: 43.60, lng: 1.44, label: "Toulouse" },
-  { lat: 43.71, lng: 7.26, label: "Nice" },
-  { lat: 47.22, lng: -1.55, label: "Nantes" },
-  { lat: 44.84, lng: -0.58, label: "Bordeaux" },
-  { lat: 43.61, lng: 3.88, label: "Montpellier" },
-  { lat: 48.58, lng: 7.75, label: "Strasbourg" },
-  { lat: 50.63, lng: 3.06, label: "Lille" },
-  { lat: 48.11, lng: -1.68, label: "Rennes" },
-  { lat: 49.44, lng: 1.10, label: "Rouen" },
-  { lat: 49.25, lng: 4.03, label: "Reims" },
-  { lat: 47.32, lng: 5.04, label: "Dijon" },
-  { lat: 45.19, lng: 5.72, label: "Grenoble" },
-  { lat: 46.58, lng: 0.34, label: "Poitiers" },
-  { lat: 47.39, lng: 0.69, label: "Tours" },
-  { lat: 48.39, lng: -4.49, label: "Brest" },
-  { lat: 46.81, lng: -1.43, label: "La Roche-sur-Yon" },
-  { lat: 45.83, lng: 1.26, label: "Limoges" },
-  { lat: 44.56, lng: 6.08, label: "Gap" },
-  { lat: 42.70, lng: 2.90, label: "Perpignan" },
-  { lat: 46.15, lng: -1.15, label: "La Rochelle" },
-  { lat: 48.00, lng: 0.20, label: "Le Mans" },
-  { lat: 49.90, lng: 2.30, label: "Amiens" },
-  { lat: 45.45, lng: 4.39, label: "Saint-Étienne" },
-  { lat: 44.10, lng: -0.78, label: "Mont-de-Marsan" },
-  { lat: 47.00, lng: 2.40, label: "Bourges" },
-  { lat: 48.45, lng: -2.76, label: "Saint-Brieuc" },
-  { lat: 41.92, lng: 8.74, label: "Ajaccio" },
+const FUEL_FIELDS: Array<{
+  priceKey: keyof FranceExportRecord;
+  majKey: keyof FranceExportRecord;
+  fuelType: string;
+}> = [
+  { priceKey: "gazole_prix", majKey: "gazole_maj", fuelType: "dieselA" },
+  { priceKey: "sp95_prix", majKey: "sp95_maj", fuelType: "e5" },
+  { priceKey: "sp98_prix", majKey: "sp98_maj", fuelType: "gasolina98" },
+  { priceKey: "e10_prix", majKey: "e10_maj", fuelType: "e10" },
+  { priceKey: "e85_prix", majKey: "e85_maj", fuelType: "e85" },
+  { priceKey: "gplc_prix", majKey: "gplc_maj", fuelType: "glp" },
 ];
-
-const SEARCH_RADIUS_KM = 50;
-
-async function fetchArea(lat: number, lng: number): Promise<FranceRecord[]> {
-  const whereClause = `within_distance(geom, geom'POINT(${lng} ${lat})', ${SEARCH_RADIUS_KM}km)`;
-
-  const url = new URL(API_URL);
-  url.searchParams.set("where", whereClause);
-  url.searchParams.set("limit", String(PAGE_SIZE));
-  url.searchParams.set("select", "id,adresse,ville,cp,geom,prix_nom,prix_valeur,prix_maj,marque");
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      "User-Agent": "GasolinaSmart-Backend/1.0",
-      Accept: "application/json",
-    },
-  });
-
-  if (response.status === 429) {
-    const retryAfter = parseInt(response.headers.get("Retry-After") || "10");
-    console.warn(`[fetcher:FR] Rate limited, waiting ${retryAfter}s...`);
-    await new Promise((r) => setTimeout(r, retryAfter * 1000));
-    return fetchArea(lat, lng);
-  }
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    console.error(`[fetcher:FR] API returned ${response.status}: ${body.slice(0, 300)}`);
-    return [];
-  }
-
-  const raw = await response.json() as FranceAPIResponse;
-  return raw.results || [];
-}
 
 export async function fetchFrance(): Promise<{ count: number; duration: number }> {
   const start = Date.now();
-  console.log(`[fetcher:FR] Starting fetch from French government API (${FR_GRID.length} points)...`);
+  console.log("[fetcher:FR] Starting fetch from French government API (full export)...");
 
-  const seen = new Map<
-    string,
-    {
-      first: FranceRecord;
-      prices: Record<string, number>;
-      latestUpdate: string;
-    }
-  >();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
 
-  for (const point of FR_GRID) {
-    try {
-      const records = await fetchArea(point.lat, point.lng);
-
-      for (const rec of records) {
-        if (!rec.id || !rec.geom) continue;
-
-        let entry = seen.get(rec.id);
-        if (!entry) {
-          entry = { first: rec, prices: {}, latestUpdate: "" };
-          seen.set(rec.id, entry);
-        }
-
-        if (rec.prix_nom && rec.prix_valeur != null) {
-          const mapped = FUEL_MAP[rec.prix_nom];
-          if (mapped && rec.prix_valeur > 0) {
-            entry.prices[mapped] = Math.round(rec.prix_valeur * 1000) / 1000;
-          }
-        }
-
-        if (rec.prix_maj && rec.prix_maj > entry.latestUpdate) {
-          entry.latestUpdate = rec.prix_maj;
-        }
-      }
-
-      console.log(`[fetcher:FR] ${point.label}: +${records.length} records, ${seen.size} unique stations`);
-    } catch (e) {
-      console.error(`[fetcher:FR] Failed for ${point.label}:`, e);
-    }
-    await new Promise((r) => setTimeout(r, 300));
+  let response: Response;
+  try {
+    response = await fetch(API_URL, {
+      headers: {
+        "User-Agent": "GasolinaSmart-Backend/1.0",
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
   }
+
+  if (!response.ok) {
+    throw new Error(`France API returned ${response.status}`);
+  }
+
+  const records = (await response.json()) as FranceExportRecord[];
+  console.log(`[fetcher:FR] Received ${records.length} records from export`);
+
+  let skippedNoGeo = 0;
+  let skippedNoPrices = 0;
+  let skippedOutOfBounds = 0;
 
   const stations: Array<{
     id: string;
@@ -157,27 +82,56 @@ export async function fetchFrance(): Promise<{ count: number; duration: number }
     updatedAt: string;
   }> = [];
 
-  for (const [stationId, entry] of seen) {
-    if (Object.keys(entry.prices).length === 0) continue;
+  for (const rec of records) {
+    if (!rec.geom || rec.geom.lat == null || rec.geom.lon == null || isNaN(rec.geom.lat) || isNaN(rec.geom.lon)) {
+      skippedNoGeo++;
+      continue;
+    }
 
-    const lat = entry.first.geom?.lat ?? 0;
-    const lon = entry.first.geom?.lon ?? 0;
+    const lat = rec.geom.lat;
+    const lon = rec.geom.lon;
 
-    if (lat < 41.3 || lat > 51.1 || lon < -5.2 || lon > 9.6) continue;
+    if (lat < 41.3 || lat > 51.1 || lon < -5.2 || lon > 9.6) {
+      skippedOutOfBounds++;
+      continue;
+    }
+
+    const prices: Record<string, number> = {};
+    let latestUpdate = "";
+
+    for (const fuel of FUEL_FIELDS) {
+      const price = rec[fuel.priceKey] as number | null | undefined;
+      if (price != null && price > 0) {
+        prices[fuel.fuelType] = Math.round(price * 1000) / 1000;
+      }
+      const maj = rec[fuel.majKey] as string | null | undefined;
+      if (maj && maj > latestUpdate) {
+        latestUpdate = maj;
+      }
+    }
+
+    if (Object.keys(prices).length === 0) {
+      skippedNoPrices++;
+      continue;
+    }
 
     stations.push({
-      id: `FR_${stationId}`,
-      name: entry.first.marque || "Station",
-      brand: entry.first.marque || "",
-      address: entry.first.adresse || "",
-      municipality: entry.first.ville || "",
-      province: entry.first.cp || "",
+      id: `FR_${rec.id}`,
+      name: rec.ville || "Station",
+      brand: "",
+      address: rec.adresse || "",
+      municipality: rec.ville || "",
+      province: rec.departement || rec.cp || "",
       latitude: lat,
       longitude: lon,
-      prices: entry.prices,
-      updatedAt: entry.latestUpdate || new Date().toISOString(),
+      prices,
+      updatedAt: latestUpdate || new Date().toISOString(),
     });
   }
+
+  console.log(
+    `[fetcher:FR] Parsed: ${stations.length} valid, skipped: ${skippedNoGeo} no-geo, ${skippedNoPrices} no-prices, ${skippedOutOfBounds} out-of-bounds`
+  );
 
   if (stations.length > 0) {
     saveStations("FR", stations);
