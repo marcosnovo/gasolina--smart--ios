@@ -82,7 +82,15 @@ async function fetchArea(lat: number, lng: number): Promise<TKStation[]> {
 
   const url = `${BASE_URL}?lat=${lat}&lng=${lng}&rad=${MAX_RADIUS}&sort=dist&type=all&apikey=${TANKERKOENIG_API_KEY}`;
 
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     if (response.status === 503) {

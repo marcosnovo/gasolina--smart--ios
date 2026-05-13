@@ -248,7 +248,12 @@ export function saveStations(
     prices: Record<string, number>;
     updatedAt: string;
   }>
-) {
+): { saved: boolean; count: number } {
+  if (stations.length === 0) {
+    console.warn(`[db] saveStations(${country}): empty array, keeping previous data`);
+    return { saved: false, count: 0 };
+  }
+
   const now = new Date().toISOString();
 
   const transaction = db.transaction(() => {
@@ -292,6 +297,7 @@ export function saveStations(
   });
 
   transaction();
+  return { saved: true, count: stations.length };
 }
 
 export function queryStationsNearby(
@@ -510,6 +516,10 @@ export function queryCountryStats(): Array<{
 export function getCountryMetaValue(country: string, key: string): string | null {
   const row = getCountryMeta.get({ $country: country, $key: key }) as { value: string } | null;
   return row?.value ?? null;
+}
+
+export function setCountryMetaValue(country: string, key: string, value: string): void {
+  setCountryMeta.run({ $country: country, $key: key, $value: value });
 }
 
 // Legacy compat — reads from ES by default

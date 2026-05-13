@@ -9,6 +9,7 @@ import {
   queryPriceHistory,
   queryCountryStats,
   getCountryMetaValue,
+  setCountryMetaValue,
 } from "./database";
 import { fetchFromMinisterio, getLastFetchTime, shouldFetch } from "./fetcher";
 import { fetchUK, shouldFetchUK } from "./fetchers/uk";
@@ -180,6 +181,7 @@ app.get("/api/countries", (c) => {
       ...info,
       stationsCount: stat?.station_count ?? 0,
       lastFetchedAt: stat?.last_fetched_at ?? null,
+      lastError: getCountryMetaValue(code, "last_error"),
     };
   });
 
@@ -277,88 +279,50 @@ app.get("/api/debug/test-apis", async (c) => {
   return c.json(results);
 });
 
-// --- Cron: periodic fetch ---
+// --- Cron: periodic fetch with error isolation ---
+
+async function runFetcher(country: string, fn: () => Promise<unknown>) {
+  try {
+    await fn();
+    setCountryMetaValue(country, "last_error", "");
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[cron:${country}] Fetch failed: ${message}`);
+    setCountryMetaValue(country, "last_error", `${new Date().toISOString()} — ${message}`);
+  }
+}
 
 async function startCron() {
-  console.log(`[cron] ES interval: ${FETCH_INTERVAL}min, GB interval: ${UK_FETCH_INTERVAL}min`);
+  console.log(`[cron] ES:${FETCH_INTERVAL}min, GB:${UK_FETCH_INTERVAL}min, FR:${FR_FETCH_INTERVAL}min, DE:${DE_FETCH_INTERVAL}min`);
 
-  // --- Spain ---
+  // --- Initial fetches (sequential, each isolated) ---
   if (shouldFetch(FETCH_INTERVAL)) {
     console.log("[cron:ES] No recent data, fetching now...");
-    try {
-      await fetchFromMinisterio();
-    } catch (e) {
-      console.error("[cron:ES] Initial fetch failed:", e);
-    }
+    await runFetcher("ES", fetchFromMinisterio);
   } else {
     console.log(`[cron:ES] Data is fresh (last: ${getLastFetchTime()})`);
   }
 
-  setInterval(async () => {
-    console.log("[cron:ES] Scheduled fetch starting...");
-    try {
-      await fetchFromMinisterio();
-    } catch (e) {
-      console.error("[cron:ES] Fetch failed:", e);
-    }
-  }, FETCH_INTERVAL * 60 * 1000);
-
-  // --- UK ---
   if (shouldFetchUK(UK_FETCH_INTERVAL)) {
     console.log("[cron:GB] No recent data, fetching now...");
-    try {
-      await fetchUK();
-    } catch (e) {
-      console.error("[cron:GB] Initial fetch failed:", e);
-    }
+    await runFetcher("GB", fetchUK);
   }
 
-  setInterval(async () => {
-    console.log("[cron:GB] Scheduled fetch starting...");
-    try {
-      await fetchUK();
-    } catch (e) {
-      console.error("[cron:GB] Fetch failed:", e);
-    }
-  }, UK_FETCH_INTERVAL * 60 * 1000);
-
-  // --- France ---
   if (shouldFetchFrance(FR_FETCH_INTERVAL)) {
     console.log("[cron:FR] No recent data, fetching now...");
-    try {
-      await fetchFrance();
-    } catch (e) {
-      console.error("[cron:FR] Initial fetch failed:", e);
-    }
+    await runFetcher("FR", fetchFrance);
   }
 
-  setInterval(async () => {
-    console.log("[cron:FR] Scheduled fetch starting...");
-    try {
-      await fetchFrance();
-    } catch (e) {
-      console.error("[cron:FR] Fetch failed:", e);
-    }
-  }, FR_FETCH_INTERVAL * 60 * 1000);
-
-  // --- Germany ---
   if (shouldFetchGermany(DE_FETCH_INTERVAL)) {
     console.log("[cron:DE] No recent data, fetching now...");
-    try {
-      await fetchGermany();
-    } catch (e) {
-      console.error("[cron:DE] Initial fetch failed:", e);
-    }
+    await runFetcher("DE", fetchGermany);
   }
 
-  setInterval(async () => {
-    console.log("[cron:DE] Scheduled fetch starting...");
-    try {
-      await fetchGermany();
-    } catch (e) {
-      console.error("[cron:DE] Fetch failed:", e);
-    }
-  }, DE_FETCH_INTERVAL * 60 * 1000);
+  // --- Periodic intervals (each independent) ---
+  setInterval(() => runFetcher("ES", fetchFromMinisterio), FETCH_INTERVAL * 60 * 1000);
+  setInterval(() => runFetcher("GB", fetchUK), UK_FETCH_INTERVAL * 60 * 1000);
+  setInterval(() => runFetcher("FR", fetchFrance), FR_FETCH_INTERVAL * 60 * 1000);
+  setInterval(() => runFetcher("DE", fetchGermany), DE_FETCH_INTERVAL * 60 * 1000);
 }
 
 // --- Start ---

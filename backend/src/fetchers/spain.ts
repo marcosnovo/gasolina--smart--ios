@@ -29,11 +29,20 @@ export async function fetchSpain(): Promise<{ count: number; duration: number }>
   const start = Date.now();
   console.log("[fetcher:ES] Starting fetch from Ministerio API...");
 
-  const response = await fetch(MINISTERIO_URL, {
-    headers: { Accept: "application/json" },
-    // @ts-ignore - Bun supports this
-    tls: { rejectUnauthorized: false },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+
+  let response: Response;
+  try {
+    response = await fetch(MINISTERIO_URL, {
+      headers: { Accept: "application/json" },
+      // @ts-ignore - Bun supports this
+      tls: { rejectUnauthorized: false },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`Ministerio API returned ${response.status}`);

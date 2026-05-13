@@ -72,12 +72,21 @@ const SEARCH_RADIUS_MILES = 25;
 async function fetchNearby(lat: number, lng: number): Promise<UKStation[]> {
   const url = `${BASE_URL}/stations/nearby?latitude=${lat}&longitude=${lng}&radius=${SEARCH_RADIUS_MILES}`;
 
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent": "GasolinaSmart-Backend/1.0",
-      "Accept": "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        "User-Agent": "GasolinaSmart-Backend/1.0",
+        "Accept": "application/json",
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     if (response.status === 429) {
