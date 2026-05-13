@@ -227,6 +227,68 @@ app.post("/api/fetch", async (c) => {
   }
 });
 
+// --- Diagnostic: test external APIs ---
+
+app.get("/api/debug/test-apis", async (c) => {
+  const results: Record<string, unknown> = {};
+
+  // UK
+  try {
+    const ukRes = await fetch(
+      "https://developer.fuel-finder.service.gov.uk/public-api/stations/nearby?latitude=51.5&longitude=-0.12&radius=5",
+      { headers: { "User-Agent": "GasolinaSmart-Backend/1.0", Accept: "application/json" } }
+    );
+    const ukText = await ukRes.text();
+    results.uk = {
+      status: ukRes.status,
+      contentType: ukRes.headers.get("content-type"),
+      bodyPreview: ukText.slice(0, 500),
+      bodyLength: ukText.length,
+    };
+  } catch (e) {
+    results.uk = { error: String(e) };
+  }
+
+  // France
+  try {
+    const frRes = await fetch(
+      "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/exports/json",
+      { headers: { "User-Agent": "GasolinaSmart-Backend/1.0", Accept: "application/json" } }
+    );
+    const frText = await frRes.text();
+    results.france = {
+      status: frRes.status,
+      contentType: frRes.headers.get("content-type"),
+      bodyPreview: frText.slice(0, 500),
+      bodyLength: frText.length,
+    };
+  } catch (e) {
+    results.france = { error: String(e) };
+  }
+
+  // Germany
+  const deKey = process.env.TANKERKOENIG_API_KEY;
+  if (deKey) {
+    try {
+      const deRes = await fetch(
+        `https://creativecommons.tankerkoenig.de/json/list.php?lat=52.52&lng=13.41&rad=5&sort=dist&type=all&apikey=${deKey}`
+      );
+      const deText = await deRes.text();
+      results.germany = {
+        status: deRes.status,
+        bodyPreview: deText.slice(0, 500),
+        bodyLength: deText.length,
+      };
+    } catch (e) {
+      results.germany = { error: String(e) };
+    }
+  } else {
+    results.germany = { error: "TANKERKOENIG_API_KEY not set" };
+  }
+
+  return c.json(results);
+});
+
 // --- Cron: periodic fetch ---
 
 async function startCron() {

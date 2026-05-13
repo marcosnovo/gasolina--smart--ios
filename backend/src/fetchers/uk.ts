@@ -73,7 +73,10 @@ async function fetchNearby(lat: number, lng: number): Promise<UKStation[]> {
   const url = `${BASE_URL}/stations/nearby?latitude=${lat}&longitude=${lng}&radius=${SEARCH_RADIUS_MILES}`;
 
   const response = await fetch(url, {
-    headers: { "User-Agent": "GasolinaSmart-Backend/1.0" },
+    headers: {
+      "User-Agent": "GasolinaSmart-Backend/1.0",
+      "Accept": "application/json",
+    },
   });
 
   if (!response.ok) {
@@ -83,11 +86,26 @@ async function fetchNearby(lat: number, lng: number): Promise<UKStation[]> {
       await new Promise((r) => setTimeout(r, retryAfter * 1000));
       return fetchNearby(lat, lng);
     }
+    const body = await response.text().catch(() => "");
+    console.error(`[fetcher:GB] API returned ${response.status}: ${body.slice(0, 500)}`);
     throw new Error(`UK API returned ${response.status}`);
   }
 
-  const data = (await response.json()) as UKResponse;
-  return data.stations || [];
+  const raw = await response.text();
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    console.error(`[fetcher:GB] Failed to parse JSON, first 500 chars: ${raw.slice(0, 500)}`);
+    return [];
+  }
+
+  // Handle both { stations: [...] } and direct array response
+  const stations = Array.isArray(data) ? data : (data.stations || data.results || []);
+  if (stations.length === 0 && raw.length > 2) {
+    console.warn(`[fetcher:GB] Response has data but no stations found. Keys: ${Object.keys(data).join(", ")}. First 300 chars: ${raw.slice(0, 300)}`);
+  }
+  return stations;
 }
 
 function mapStation(dto: UKStation): {

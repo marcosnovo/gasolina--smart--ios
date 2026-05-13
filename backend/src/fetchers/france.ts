@@ -44,10 +44,21 @@ export async function fetchFrance(): Promise<{ count: number; duration: number }
   }
 
   if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    console.error(`[fetcher:FR] API returned ${response.status}: ${body.slice(0, 500)}`);
     throw new Error(`France API returned ${response.status}`);
   }
 
-  const records = (await response.json()) as FranceRecord[];
+  const raw = await response.text();
+  let records: FranceRecord[];
+  try {
+    const parsed = JSON.parse(raw);
+    // Handle both direct array and { results: [...] } response
+    records = Array.isArray(parsed) ? parsed : (parsed.results || []);
+  } catch {
+    console.error(`[fetcher:FR] Failed to parse JSON, first 500 chars: ${raw.slice(0, 500)}`);
+    return { count: 0, duration: Date.now() - start };
+  }
   console.log(`[fetcher:FR] Received ${records.length} records`);
 
   // Group by station ID — each record is one fuel price at a station
