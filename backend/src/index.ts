@@ -200,12 +200,30 @@ app.get("/api/history/:stationId", (c) => {
 // --- Manual fetch trigger ---
 
 app.post("/api/fetch", async (c) => {
+  const country = c.req.query("country") || "ES";
   try {
-    const result = await fetchFromMinisterio();
-    return c.json({ success: true, ...result });
+    let result: { count: number; duration: number };
+    switch (country) {
+      case "ES":
+        result = await fetchFromMinisterio();
+        break;
+      case "GB":
+        result = await fetchUK();
+        break;
+      case "FR":
+        result = await fetchFrance();
+        break;
+      case "DE":
+        result = await fetchGermany();
+        break;
+      default:
+        return c.json({ success: false, error: `Unknown country: ${country}` }, 400);
+    }
+    return c.json({ success: true, country, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return c.json({ success: false, error: message }, 500);
+    const stack = error instanceof Error ? error.stack : undefined;
+    return c.json({ success: false, country, error: message, stack }, 500);
   }
 });
 
