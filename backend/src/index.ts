@@ -15,6 +15,7 @@ import { fetchFromMinisterio, getLastFetchTime, shouldFetch } from "./fetcher";
 import { fetchUK, shouldFetchUK } from "./fetchers/uk";
 import { fetchFrance, shouldFetchFrance } from "./fetchers/france";
 import { fetchGermany, shouldFetchGermany } from "./fetchers/germany";
+import { fetchItaly, shouldFetchItaly } from "./fetchers/italy";
 
 const app = new Hono();
 
@@ -22,6 +23,7 @@ const FETCH_INTERVAL = parseInt(process.env.FETCH_INTERVAL_MINUTES || "15");
 const UK_FETCH_INTERVAL = parseInt(process.env.UK_FETCH_INTERVAL_MINUTES || "15");
 const FR_FETCH_INTERVAL = parseInt(process.env.FR_FETCH_INTERVAL_MINUTES || "30");
 const DE_FETCH_INTERVAL = parseInt(process.env.DE_FETCH_INTERVAL_MINUTES || "15");
+const IT_FETCH_INTERVAL = parseInt(process.env.IT_FETCH_INTERVAL_MINUTES || "720");
 const PORT = parseInt(process.env.PORT || "3000");
 
 app.use("/*", cors());
@@ -35,7 +37,7 @@ app.get("/api/health", (c) => {
   const statsMap = new Map(stats.map((s) => [s.country, s]));
 
   const countries: Record<string, unknown> = {};
-  for (const code of ["ES", "GB", "FR", "DE"]) {
+  for (const code of ["ES", "GB", "FR", "DE", "IT"]) {
     const stat = statsMap.get(code);
     const lastError = getCountryMetaValue(code, "last_error") || null;
     const lastFetch = stat?.last_fetched_at ?? null;
@@ -205,6 +207,18 @@ const COUNTRY_INFO: Record<
       license: "CC BY 4.0",
     },
   },
+  IT: {
+    displayName: "Italia",
+    currency: "EUR",
+    currencySymbol: "€",
+    supportedFuels: ["e5", "gasolina98", "dieselA", "dieselPremium", "glp", "gnc"],
+    dataFreshness: "daily",
+    attribution: {
+      text: "Ministero delle Imprese e del Made in Italy (MIMIT)",
+      url: "https://www.mimit.gov.it/it/open-data/elenco-dataset/carburanti-prezzi-praticati-e-anagrafica-degli-impianti",
+      license: "IODL 2.0",
+    },
+  },
 };
 
 app.get("/api/countries", (c) => {
@@ -254,6 +268,9 @@ app.post("/api/fetch", async (c) => {
         break;
       case "DE":
         result = await fetchGermany();
+        break;
+      case "IT":
+        result = await fetchItaly();
         break;
       default:
         return c.json({ success: false, error: `Unknown country: ${country}` }, 400);
@@ -342,7 +359,7 @@ async function runFetcher(country: string, fn: () => Promise<unknown>) {
 }
 
 async function startCron() {
-  console.log(`[cron] ES:${FETCH_INTERVAL}min, GB:${UK_FETCH_INTERVAL}min, FR:${FR_FETCH_INTERVAL}min, DE:${DE_FETCH_INTERVAL}min`);
+  console.log(`[cron] ES:${FETCH_INTERVAL}min, GB:${UK_FETCH_INTERVAL}min, FR:${FR_FETCH_INTERVAL}min, DE:${DE_FETCH_INTERVAL}min, IT:${IT_FETCH_INTERVAL}min`);
 
   // --- Initial fetches (sequential, each isolated) ---
   if (shouldFetch(FETCH_INTERVAL)) {
@@ -367,11 +384,17 @@ async function startCron() {
     await runFetcher("DE", fetchGermany);
   }
 
+  if (shouldFetchItaly(IT_FETCH_INTERVAL)) {
+    console.log("[cron:IT] No recent data, fetching now...");
+    await runFetcher("IT", fetchItaly);
+  }
+
   // --- Periodic intervals (each independent) ---
   setInterval(() => runFetcher("ES", fetchFromMinisterio), FETCH_INTERVAL * 60 * 1000);
   setInterval(() => runFetcher("GB", fetchUK), UK_FETCH_INTERVAL * 60 * 1000);
   setInterval(() => runFetcher("FR", fetchFrance), FR_FETCH_INTERVAL * 60 * 1000);
   setInterval(() => runFetcher("DE", fetchGermany), DE_FETCH_INTERVAL * 60 * 1000);
+  setInterval(() => runFetcher("IT", fetchItaly), IT_FETCH_INTERVAL * 60 * 1000);
 }
 
 // --- Start ---

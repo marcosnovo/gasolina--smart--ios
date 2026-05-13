@@ -434,7 +434,7 @@ export function queryAveragePrice(
 export function queryStationDetail(stationId: string): StationResult | null {
   // Compat: if no country prefix, assume ES
   let resolvedId = stationId;
-  if (!/^(ES|GB|FR|DE)_/.test(stationId)) {
+  if (!/^(ES|GB|FR|DE|IT)_/.test(stationId)) {
     console.warn(`[compat] Station ID without country prefix: ${stationId}, assuming ES_`);
     resolvedId = `ES_${stationId}`;
   }
@@ -465,7 +465,7 @@ export function queryPriceHistory(
   limit: number = 1000
 ): Array<{ recorded_at: string; fuel_type: string; price: number }> {
   let resolvedId = stationId;
-  if (!/^(ES|GB|FR|DE)_/.test(stationId)) {
+  if (!/^(ES|GB|FR|DE|IT)_/.test(stationId)) {
     resolvedId = `ES_${stationId}`;
   }
 
