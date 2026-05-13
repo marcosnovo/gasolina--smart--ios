@@ -269,7 +269,9 @@ final class UserPreferences {
         defaults.set(showChargingStations, forKey: "showChargingStations")
         defaults.set(selectedCountry.rawValue, forKey: "selectedCountry")
         defaults.set(appLanguage.rawValue, forKey: "appLanguage")
-        UserDefaults(suiteName: "group.MarcosNovo.GasolinaSmart")?.set(appLanguage.rawValue, forKey: "appLanguage")
+        let shared = UserDefaults(suiteName: "group.MarcosNovo.GasolinaSmart")
+        shared?.set(appLanguage.rawValue, forKey: "appLanguage")
+        shared?.set(selectedCountry.rawValue, forKey: "selectedCountry")
     }
 }
 

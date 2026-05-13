@@ -13,6 +13,8 @@ db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA synchronous = NORMAL");
 db.exec("PRAGMA cache_size = -64000");
 
+// --- Base tables (unchanged structure for new DBs) ---
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS stations (
     id TEXT PRIMARY KEY,
@@ -23,6 +25,7 @@ db.exec(`
     province TEXT,
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
+    country TEXT NOT NULL DEFAULT 'ES',
     updated_at TEXT NOT NULL
   )
 `);
@@ -48,29 +51,109 @@ db.exec(`
 `);
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
+  CREATE TABLE IF NOT EXISTS country_meta (
+    country TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (country, key)
   )
 `);
 
+// --- Idempotent migration for existing DBs ---
+
+function runMigrations() {
+  // 1. Add country column to stations if missing
+  const stationCols = db.prepare("PRAGMA table_info(stations)").all() as Array<{ name: string }>;
+  if (!stationCols.some((c) => c.name === "country")) {
+    console.log("[migration] Adding country column to stations...");
+    db.exec("ALTER TABLE stations ADD COLUMN country TEXT NOT NULL DEFAULT 'ES'");
+  }
+
+  // 2. Prefix existing ES station IDs that lack prefix
+  const unprefixedCount = db
+    .prepare(
+      "SELECT COUNT(*) as cnt FROM stations WHERE id NOT LIKE 'ES_%' AND id NOT LIKE 'GB_%' AND id NOT LIKE 'FR_%' AND id NOT LIKE 'DE_%'"
+    )
+    .get() as { cnt: number };
+
+  if (unprefixedCount.cnt > 0) {
+    console.log(`[migration] Prefixing ${unprefixedCount.cnt} unprefixed station IDs with ES_...`);
+    const beforeCount = (db.prepare("SELECT COUNT(*) as cnt FROM stations").get() as { cnt: number }).cnt;
+
+    db.exec("BEGIN TRANSACTION");
+    try {
+      // Update price_history first (no FK constraint but references station_id)
+      db.exec(`
+        UPDATE price_history SET station_id = 'ES_' || station_id
+        WHERE station_id NOT LIKE 'ES_%' AND station_id NOT LIKE 'GB_%' AND station_id NOT LIKE 'FR_%' AND station_id NOT LIKE 'DE_%'
+      `);
+      // Update prices (FK to stations.id)
+      db.exec(`
+        UPDATE prices SET station_id = 'ES_' || station_id
+        WHERE station_id NOT LIKE 'ES_%' AND station_id NOT LIKE 'GB_%' AND station_id NOT LIKE 'FR_%' AND station_id NOT LIKE 'DE_%'
+      `);
+      // Update stations last
+      db.exec(`
+        UPDATE stations SET id = 'ES_' || id
+        WHERE id NOT LIKE 'ES_%' AND id NOT LIKE 'GB_%' AND id NOT LIKE 'FR_%' AND id NOT LIKE 'DE_%'
+      `);
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+
+    const afterCount = (
+      db.prepare("SELECT COUNT(*) as cnt FROM stations WHERE country='ES'").get() as { cnt: number }
+    ).cnt;
+    console.log(`[migration] Before: ${beforeCount} stations, After ES: ${afterCount}`);
+  }
+
+  // 3. Migrate meta → country_meta if old meta table exists
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'")
+    .all() as Array<{ name: string }>;
+  if (tables.length > 0) {
+    console.log("[migration] Migrating meta → country_meta...");
+    const metaRows = db.prepare("SELECT key, value FROM meta").all() as Array<{ key: string; value: string }>;
+    const upsertMeta = db.prepare(
+      "INSERT INTO country_meta (country, key, value) VALUES ($country, $key, $value) ON CONFLICT(country, key) DO UPDATE SET value = excluded.value"
+    );
+    for (const row of metaRows) {
+      upsertMeta.run({ $country: "ES", $key: row.key, $value: row.value });
+    }
+    db.exec("DROP TABLE meta");
+    console.log("[migration] meta table migrated and dropped.");
+  }
+}
+
+runMigrations();
+
+// --- Indexes ---
+
 db.exec("CREATE INDEX IF NOT EXISTS idx_stations_lat ON stations(latitude)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_stations_lon ON stations(longitude)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_stations_country ON stations(country)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_stations_country_lat_lon ON stations(country, latitude, longitude)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_prices_fuel ON prices(fuel_type)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_prices_station_fuel ON prices(station_id, fuel_type)");
 db.exec(
-  "CREATE INDEX IF NOT EXISTS idx_history_lookup ON price_history(station_id, fuel_type, recorded_at)"
+  "CREATE INDEX IF NOT EXISTS idx_history_lookup ON price_history(station_id, fuel_type, recorded_at DESC)"
+);
+db.exec(
+  "CREATE INDEX IF NOT EXISTS idx_history_country ON price_history(station_id, recorded_at DESC)"
 );
 
 // --- Prepared statements ---
 
 const upsertStation = db.prepare(`
-  INSERT INTO stations (id, name, brand, address, municipality, province, latitude, longitude, updated_at)
-  VALUES ($id, $name, $brand, $address, $municipality, $province, $latitude, $longitude, $updated_at)
+  INSERT INTO stations (id, name, brand, address, municipality, province, latitude, longitude, country, updated_at)
+  VALUES ($id, $name, $brand, $address, $municipality, $province, $latitude, $longitude, $country, $updated_at)
   ON CONFLICT(id) DO UPDATE SET
     name = excluded.name, brand = excluded.brand, address = excluded.address,
     municipality = excluded.municipality, province = excluded.province,
     latitude = excluded.latitude, longitude = excluded.longitude,
-    updated_at = excluded.updated_at
+    country = excluded.country, updated_at = excluded.updated_at
 `);
 
 const upsertPrice = db.prepare(`
@@ -85,12 +168,14 @@ const insertHistory = db.prepare(`
   VALUES ($station_id, $fuel_type, $price, $recorded_at)
 `);
 
-const setMeta = db.prepare(`
-  INSERT INTO meta (key, value) VALUES ($key, $value)
-  ON CONFLICT(key) DO UPDATE SET value = excluded.value
+const setCountryMeta = db.prepare(`
+  INSERT INTO country_meta (country, key, value) VALUES ($country, $key, $value)
+  ON CONFLICT(country, key) DO UPDATE SET value = excluded.value
 `);
 
-const getMeta = db.prepare("SELECT value FROM meta WHERE key = $key");
+const getCountryMeta = db.prepare(
+  "SELECT value FROM country_meta WHERE country = $country AND key = $key"
+);
 
 // --- Haversine in JS ---
 
@@ -122,6 +207,7 @@ export interface StationResult {
   province: string;
   latitude: number;
   longitude: number;
+  country: string;
   updated_at: string;
   distance_km: number;
   prices: Record<string, number>;
@@ -136,6 +222,7 @@ interface StationDBRow {
   province: string;
   latitude: number;
   longitude: number;
+  country: string;
   updated_at: string;
 }
 
@@ -148,6 +235,7 @@ interface PriceDBRow {
 // --- Public API ---
 
 export function saveStations(
+  country: string,
   stations: Array<{
     id: string;
     name: string;
@@ -174,6 +262,7 @@ export function saveStations(
         $province: s.province,
         $latitude: s.latitude,
         $longitude: s.longitude,
+        $country: country,
         $updated_at: s.updatedAt,
       });
 
@@ -194,8 +283,12 @@ export function saveStations(
       }
     }
 
-    setMeta.run({ $key: "last_fetch", $value: now });
-    setMeta.run({ $key: "station_count", $value: String(stations.length) });
+    setCountryMeta.run({ $country: country, $key: "last_fetch", $value: now });
+    setCountryMeta.run({
+      $country: country,
+      $key: "station_count",
+      $value: String(stations.length),
+    });
   });
 
   transaction();
@@ -205,6 +298,7 @@ export function queryStationsNearby(
   lat: number,
   lon: number,
   radiusKm: number,
+  country: string = "ES",
   fuelType?: string,
   limit: number = 50
 ): StationResult[] {
@@ -220,11 +314,13 @@ export function queryStationsNearby(
       SELECT DISTINCT s.*
       FROM stations s
       JOIN prices p ON s.id = p.station_id AND p.fuel_type = $fuel_type
-      WHERE s.latitude BETWEEN $min_lat AND $max_lat
+      WHERE s.country = $country
+        AND s.latitude BETWEEN $min_lat AND $max_lat
         AND s.longitude BETWEEN $min_lon AND $max_lon
     `
       )
       .all({
+        $country: country,
         $fuel_type: fuelType,
         $min_lat: lat - degLat,
         $max_lat: lat + degLat,
@@ -236,11 +332,13 @@ export function queryStationsNearby(
       .prepare(
         `
       SELECT * FROM stations
-      WHERE latitude BETWEEN $min_lat AND $max_lat
+      WHERE country = $country
+        AND latitude BETWEEN $min_lat AND $max_lat
         AND longitude BETWEEN $min_lon AND $max_lon
     `
       )
       .all({
+        $country: country,
         $min_lat: lat - degLat,
         $max_lat: lat + degLat,
         $min_lon: lon - degLon,
@@ -282,6 +380,7 @@ export function queryStationsNearby(
     province: s.province,
     latitude: s.latitude,
     longitude: s.longitude,
+    country: s.country,
     updated_at: s.updated_at,
     distance_km: Math.round(s.distance_km * 100) / 100,
     prices: priceMap.get(s.id) || {},
@@ -292,9 +391,10 @@ export function queryCheapest(
   lat: number,
   lon: number,
   radiusKm: number,
-  fuelType: string
+  fuelType: string,
+  country: string = "ES"
 ): StationResult | null {
-  const results = queryStationsNearby(lat, lon, radiusKm, fuelType, 500);
+  const results = queryStationsNearby(lat, lon, radiusKm, country, fuelType, 500);
   if (results.length === 0) return null;
 
   return results.reduce((cheapest, s) => {
@@ -308,9 +408,10 @@ export function queryAveragePrice(
   lat: number,
   lon: number,
   radiusKm: number,
-  fuelType: string
+  fuelType: string,
+  country: string = "ES"
 ): { average: number; count: number } | null {
-  const results = queryStationsNearby(lat, lon, radiusKm, fuelType, 500);
+  const results = queryStationsNearby(lat, lon, radiusKm, country, fuelType, 500);
   const prices = results
     .map((s) => s.prices[fuelType])
     .filter((p): p is number => p != null);
@@ -325,15 +426,22 @@ export function queryAveragePrice(
 }
 
 export function queryStationDetail(stationId: string): StationResult | null {
+  // Compat: if no country prefix, assume ES
+  let resolvedId = stationId;
+  if (!/^(ES|GB|FR|DE)_/.test(stationId)) {
+    console.warn(`[compat] Station ID without country prefix: ${stationId}, assuming ES_`);
+    resolvedId = `ES_${stationId}`;
+  }
+
   const station = db
     .prepare("SELECT * FROM stations WHERE id = $id")
-    .get({ $id: stationId }) as StationDBRow | null;
+    .get({ $id: resolvedId }) as StationDBRow | null;
 
   if (!station) return null;
 
   const prices = db
     .prepare("SELECT fuel_type, price FROM prices WHERE station_id = $id")
-    .all({ $id: stationId }) as PriceDBRow[];
+    .all({ $id: resolvedId }) as PriceDBRow[];
 
   const priceMap: Record<string, number> = {};
   for (const p of prices) priceMap[p.fuel_type] = p.price;
@@ -345,9 +453,68 @@ export function queryStationDetail(stationId: string): StationResult | null {
   };
 }
 
-export function getMetaValue(key: string): string | null {
-  const row = getMeta.get({ $key: key }) as { value: string } | null;
+export function queryPriceHistory(
+  stationId: string,
+  days: number = 30,
+  limit: number = 1000
+): Array<{ recorded_at: string; fuel_type: string; price: number }> {
+  let resolvedId = stationId;
+  if (!/^(ES|GB|FR|DE)_/.test(stationId)) {
+    resolvedId = `ES_${stationId}`;
+  }
+
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  return db
+    .prepare(
+      `SELECT recorded_at, fuel_type, price FROM price_history
+       WHERE station_id = $id AND recorded_at >= $cutoff
+       ORDER BY recorded_at DESC
+       LIMIT $limit`
+    )
+    .all({ $id: resolvedId, $cutoff: cutoff, $limit: limit }) as Array<{
+    recorded_at: string;
+    fuel_type: string;
+    price: number;
+  }>;
+}
+
+export function queryCountryStats(): Array<{
+  country: string;
+  station_count: number;
+  last_fetched_at: string | null;
+}> {
+  const countries = db
+    .prepare("SELECT DISTINCT country FROM stations ORDER BY country")
+    .all() as Array<{ country: string }>;
+
+  return countries.map((c) => {
+    const count = (
+      db
+        .prepare("SELECT COUNT(*) as cnt FROM stations WHERE country = $country")
+        .get({ $country: c.country }) as { cnt: number }
+    ).cnt;
+
+    const meta = db
+      .prepare("SELECT value FROM country_meta WHERE country = $country AND key = 'last_fetch'")
+      .get({ $country: c.country }) as { value: string } | null;
+
+    return {
+      country: c.country,
+      station_count: count,
+      last_fetched_at: meta?.value ?? null,
+    };
+  });
+}
+
+export function getCountryMetaValue(country: string, key: string): string | null {
+  const row = getCountryMeta.get({ $country: country, $key: key }) as { value: string } | null;
   return row?.value ?? null;
+}
+
+// Legacy compat — reads from ES by default
+export function getMetaValue(key: string): string | null {
+  return getCountryMetaValue("ES", key);
 }
 
 export default db;

@@ -43,6 +43,7 @@ actor BackendAPIService {
         let province: String
         let latitude: Double
         let longitude: Double
+        let country: String?
         let updated_at: String
         let distance_km: Double
         let prices: [String: Double]
@@ -57,6 +58,16 @@ actor BackendAPIService {
 
             let date = BackendAPIService.isoFormatter.date(from: updated_at) ?? Date()
 
+            let stationCountry: Country
+            if let code = country, let c = Country(rawValue: code) {
+                stationCountry = c
+            } else if id.count > 3, let prefix = id.split(separator: "_").first,
+                      let c = Country(rawValue: String(prefix)) {
+                stationCountry = c
+            } else {
+                stationCountry = .spain
+            }
+
             return FuelStation(
                 id: id,
                 name: name,
@@ -67,7 +78,8 @@ actor BackendAPIService {
                 latitude: latitude,
                 longitude: longitude,
                 prices: fuelPrices,
-                lastUpdated: date
+                lastUpdated: date,
+                country: stationCountry
             )
         }
     }
@@ -76,6 +88,7 @@ actor BackendAPIService {
         latitude: Double,
         longitude: Double,
         radiusKm: Double,
+        country: Country = .spain,
         fuelType: FuelType? = nil,
         limit: Int = 50
     ) async throws -> StationsResponse {
@@ -85,6 +98,7 @@ actor BackendAPIService {
             URLQueryItem(name: "lon", value: String(longitude)),
             URLQueryItem(name: "radius", value: String(radiusKm)),
             URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "country", value: country.rawValue),
         ]
         if let fuelType {
             components.queryItems?.append(
@@ -110,7 +124,8 @@ actor BackendAPIService {
         latitude: Double,
         longitude: Double,
         radiusKm: Double,
-        fuelType: FuelType
+        fuelType: FuelType,
+        country: Country = .spain
     ) async throws -> CheapestResponse {
         var components = URLComponents(string: "\(baseURL)/api/stations/cheapest")!
         components.queryItems = [
@@ -118,6 +133,7 @@ actor BackendAPIService {
             URLQueryItem(name: "lon", value: String(longitude)),
             URLQueryItem(name: "radius", value: String(radiusKm)),
             URLQueryItem(name: "fuel", value: fuelType.rawValue),
+            URLQueryItem(name: "country", value: country.rawValue),
         ]
 
         guard let url = components.url else { throw BackendError.invalidURL }
@@ -150,13 +166,63 @@ actor BackendAPIService {
         let fetch_interval_minutes: Int
     }
 
-    func fetchMeta() async throws -> MetaResponse {
-        guard let url = URL(string: "\(baseURL)/api/meta") else {
+    func fetchMeta(country: Country = .spain) async throws -> MetaResponse {
+        var components = URLComponents(string: "\(baseURL)/api/meta")!
+        components.queryItems = [
+            URLQueryItem(name: "country", value: country.rawValue),
+        ]
+        guard let url = components.url else { throw BackendError.invalidURL }
+        let (data, response) = try await session.data(from: url)
+        try validateResponse(response)
+        return try JSONDecoder().decode(MetaResponse.self, from: data)
+    }
+
+    // MARK: - Countries
+
+    struct CountryInfo: Decodable, Sendable {
+        let code: String
+        let displayName: String
+        let currency: String
+        let currencySymbol: String
+        let supportedFuels: [String]
+        let dataFreshness: String
+        let attribution: Attribution
+        let stationsCount: Int
+        let lastFetchedAt: String?
+
+        struct Attribution: Decodable, Sendable {
+            let text: String
+            let url: String
+            let license: String
+        }
+    }
+
+    func fetchCountries() async throws -> [CountryInfo] {
+        guard let url = URL(string: "\(baseURL)/api/countries") else {
             throw BackendError.invalidURL
         }
         let (data, response) = try await session.data(from: url)
         try validateResponse(response)
-        return try JSONDecoder().decode(MetaResponse.self, from: data)
+        return try JSONDecoder().decode([CountryInfo].self, from: data)
+    }
+
+    // MARK: - Price History
+
+    struct PriceHistoryEntry: Decodable, Sendable {
+        let recorded_at: String
+        let fuel_type: String
+        let price: Double
+    }
+
+    func fetchPriceHistory(stationId: String, days: Int = 30) async throws -> [PriceHistoryEntry] {
+        var components = URLComponents(string: "\(baseURL)/api/history/\(stationId)")!
+        components.queryItems = [
+            URLQueryItem(name: "days", value: String(days)),
+        ]
+        guard let url = components.url else { throw BackendError.invalidURL }
+        let (data, response) = try await session.data(from: url)
+        try validateResponse(response)
+        return try JSONDecoder().decode([PriceHistoryEntry].self, from: data)
     }
 
     // MARK: - Health

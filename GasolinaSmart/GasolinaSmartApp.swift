@@ -39,8 +39,26 @@ struct GasolinaSmartApp: App {
         }
 
         guard url.host == "station",
-              let stationId = url.pathComponents.dropFirst().first else {
+              let rawId = url.pathComponents.dropFirst().first else {
             return
+        }
+
+        let countryPrefixes = ["ES_", "GB_", "FR_", "DE_"]
+        let stationId: String
+        if countryPrefixes.contains(where: { rawId.hasPrefix($0) }) {
+            stationId = rawId
+            if let prefix = rawId.split(separator: "_").first,
+               let country = Country(rawValue: String(prefix)),
+               country != preferences.selectedCountry {
+                preferences.selectedCountry = country
+                stationStore.switchCountry(country)
+            }
+        } else {
+            stationId = "ES_\(rawId)"
+            if preferences.selectedCountry != .spain {
+                preferences.selectedCountry = .spain
+                stationStore.switchCountry(.spain)
+            }
         }
 
         appState.selectedTab = .map

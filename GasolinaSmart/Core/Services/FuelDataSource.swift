@@ -16,7 +16,6 @@ enum FuelDataSourceError: LocalizedError {
     case invalidURL
     case httpError(Int)
     case parseError(String)
-    case apiKeyRequired
     case countryNotSupported
 
     var errorDescription: String? {
@@ -24,7 +23,6 @@ enum FuelDataSourceError: LocalizedError {
         case .invalidURL: "URL no válida"
         case .httpError(let code): "Error del servidor: \(code)"
         case .parseError(let msg): "Error al procesar datos: \(msg)"
-        case .apiKeyRequired: "Se requiere API key"
         case .countryNotSupported: "País no soportado"
         }
     }
