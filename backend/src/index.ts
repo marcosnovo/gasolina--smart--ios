@@ -232,62 +232,47 @@ app.post("/api/fetch", async (c) => {
 app.get("/api/debug/test-apis", async (c) => {
   const results: Record<string, unknown> = {};
 
-  // UK
-  try {
-    const ukRes = await fetch(
-      "https://developer.fuel-finder.service.gov.uk/public-api/stations/nearby?latitude=51.5&longitude=-0.12&radius=5",
-      { headers: { "User-Agent": "GasolinaSmart-Backend/1.0", Accept: "application/json" } }
-    );
-    const ukText = await ukRes.text();
-    results.uk = {
-      status: ukRes.status,
-      contentType: ukRes.headers.get("content-type"),
-      bodyPreview: ukText.slice(0, 500),
-      bodyLength: ukText.length,
-    };
-  } catch (e) {
-    results.uk = { error: String(e) };
-  }
-
-  // France (records endpoint with spatial query)
-  try {
-    const frUrl = new URL("https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records");
-    frUrl.searchParams.set("where", "within_distance(geom, geom'POINT(2.35 48.86)', 5km)");
-    frUrl.searchParams.set("limit", "5");
-    frUrl.searchParams.set("select", "id,adresse,ville,cp,geom,prix_nom,prix_valeur,prix_maj,marque");
-    const frRes = await fetch(frUrl.toString(), {
-      headers: { "User-Agent": "GasolinaSmart-Backend/1.0", Accept: "application/json" },
-    });
-    const frText = await frRes.text();
-    results.france = {
-      status: frRes.status,
-      contentType: frRes.headers.get("content-type"),
-      bodyPreview: frText.slice(0, 500),
-      bodyLength: frText.length,
-    };
-  } catch (e) {
-    results.france = { error: String(e) };
-  }
-
-  // Germany
-  const deKey = process.env.TANKERKOENIG_API_KEY;
-  if (deKey) {
+  async function probe(label: string, url: string, headers?: Record<string, string>) {
     try {
-      const deRes = await fetch(
-        `https://creativecommons.tankerkoenig.de/json/list.php?lat=52.52&lng=13.41&rad=5&sort=dist&type=all&apikey=${deKey}`
-      );
-      const deText = await deRes.text();
-      results.germany = {
-        status: deRes.status,
-        bodyPreview: deText.slice(0, 500),
-        bodyLength: deText.length,
+      const res = await fetch(url, { headers: headers || {} });
+      const text = await res.text();
+      return {
+        status: res.status,
+        contentType: res.headers.get("content-type"),
+        bodyPreview: text.slice(0, 200),
+        bodyLength: text.length,
       };
     } catch (e) {
-      results.germany = { error: String(e) };
+      return { error: String(e) };
     }
-  } else {
-    results.germany = { error: "TANKERKOENIG_API_KEY not set" };
   }
+
+  // --- France: 3 User-Agent variants ---
+  const frBase = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records?limit=1";
+
+  results.france_A_default = await probe("FR default", frBase);
+  results.france_B_browser = await probe("FR browser", frBase, {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Accept: "application/json",
+  });
+  results.france_C_polite = await probe("FR polite", frBase, {
+    "User-Agent": "GasolinaSmart/1.0 (+https://gasolina-smart.app; contact@gasolina-smart.app)",
+    Accept: "application/json",
+  });
+
+  // --- UK: connectivity checks ---
+  results.uk_github = await probe("github", "https://api.github.com/zen");
+  results.uk_govuk = await probe("gov.uk", "https://www.gov.uk/");
+  results.uk_devportal = await probe("fuel-finder portal", "https://developer.fuel-finder.service.gov.uk/");
+  results.uk_api = await probe("fuel-finder API", "https://developer.fuel-finder.service.gov.uk/public-api/stations/nearby?latitude=51.5&longitude=-0.12&radius=5", {
+    "User-Agent": "GasolinaSmart-Backend/1.0",
+    Accept: "application/json",
+  });
+
+  // --- Germany: demo key ---
+  results.germany_demo = await probe("tankerkoenig demo",
+    "https://creativecommons.tankerkoenig.de/json/list.php?lat=52.52&lng=13.40&rad=5&type=all&apikey=00000000-0000-0000-0000-000000000002"
+  );
 
   return c.json(results);
 });
