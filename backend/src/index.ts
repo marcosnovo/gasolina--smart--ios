@@ -249,12 +249,15 @@ app.get("/api/debug/test-apis", async (c) => {
     results.uk = { error: String(e) };
   }
 
-  // France
+  // France (records endpoint with spatial query)
   try {
-    const frRes = await fetch(
-      "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/exports/json",
-      { headers: { "User-Agent": "GasolinaSmart-Backend/1.0", Accept: "application/json" } }
-    );
+    const frUrl = new URL("https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records");
+    frUrl.searchParams.set("where", "within_distance(geom, geom'POINT(2.35 48.86)', 5km)");
+    frUrl.searchParams.set("limit", "5");
+    frUrl.searchParams.set("select", "id,adresse,ville,cp,geom,prix_nom,prix_valeur,prix_maj,marque");
+    const frRes = await fetch(frUrl.toString(), {
+      headers: { "User-Agent": "GasolinaSmart-Backend/1.0", Accept: "application/json" },
+    });
     const frText = await frRes.text();
     results.france = {
       status: frRes.status,
