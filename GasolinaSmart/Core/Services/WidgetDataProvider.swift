@@ -10,6 +10,7 @@ enum WidgetDataProvider {
     static func update(
         cheapestStation: FuelStation,
         fuelType: FuelType,
+        country: Country,
         averagePrice: Decimal?,
         tankLiters: Double,
         userLocation: CLLocation,
@@ -24,6 +25,13 @@ enum WidgetDataProvider {
         let price = cheapestStation.price(for: fuelType) ?? 0
         let priceDouble = NSDecimalNumber(decimal: price).doubleValue
         let distance = cheapestStation.distanceKm(from: userLocation)
+
+        if let existing = read(),
+           existing.stationId == cheapestStation.id,
+           existing.price == priceDouble,
+           abs(existing.distanceKm - distance) < 0.1 {
+            return
+        }
 
         var savingText: String?
         var opportunityKey = "unknown"
@@ -68,11 +76,13 @@ enum WidgetDataProvider {
             stationCount: stationCount,
             lastUpdated: Date(),
             isDarkMode: isDarkMode,
-            navigationURLString: navigationURLString
+            navigationURLString: navigationURLString,
+            fuelTypeUnit: fuelType.unit(for: country)
         )
 
         if let encoded = try? JSONEncoder().encode(data) {
             defaults.set(encoded, forKey: WidgetConstants.widgetDataKey)
+            defaults.synchronize()
         }
 
         WidgetCenter.shared.reloadAllTimelines()

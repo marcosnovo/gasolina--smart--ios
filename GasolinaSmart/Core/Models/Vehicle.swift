@@ -26,6 +26,16 @@ enum VehicleType: String, Codable, CaseIterable, Hashable {
         case .motorcycle: "Moto"
         }
     }
+
+    var modelFileName: String? {
+        switch self {
+        case .sedan: "sedan"
+        case .suv: "suv"
+        case .hatchback: "hatchback-sports"
+        case .van: "van"
+        case .motorcycle: nil
+        }
+    }
 }
 
 enum VehicleColor: String, Codable, CaseIterable, Hashable {

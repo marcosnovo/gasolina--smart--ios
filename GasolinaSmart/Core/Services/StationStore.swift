@@ -2,6 +2,7 @@ import Foundation
 import CoreLocation
 import SwiftUI
 
+@MainActor
 @Observable
 final class StationStore {
     private(set) var allStations: [FuelStation] = []
@@ -10,16 +11,29 @@ final class StationStore {
     private(set) var lastUpdated: Date?
     private(set) var isUsingCache = false
     private(set) var cachedAveragePrice: Decimal?
+    private(set) var activeCountry: Country = .spain
     private var loadedRadiusKm: Double = 0
     private var loadGeneration = 0
 
     func loadCacheImmediately() async {
-        guard allStations.isEmpty else { return }
+        guard allStations.isEmpty, activeCountry == .spain else { return }
         if let cached = await StationCache.shared.getStale() {
             allStations = cached
             lastUpdated = await StationCache.shared.get()?.timestamp
             isUsingCache = true
         }
+    }
+
+    func switchCountry(_ country: Country) {
+        guard country != activeCountry else { return }
+        activeCountry = country
+        allStations = []
+        cachedAveragePrice = nil
+        lastUpdated = nil
+        loadedRadiusKm = 0
+        loadGeneration += 1
+        error = nil
+        isUsingCache = false
     }
 
     func loadStations(near location: CLLocation? = nil, radiusKm: Double = 50) async {
@@ -36,8 +50,10 @@ final class StationStore {
     private func loadFromNetwork(location: CLLocation?, radiusKm: Double, force: Bool = false) async {
         loadGeneration += 1
         let myGeneration = loadGeneration
+        let country = activeCountry
 
-        if !force, let age = await StationCache.shared.cacheAge(), age < 5 * 60, !allStations.isEmpty {
+        if country == .spain, !force,
+           let age = await StationCache.shared.cacheAge(), age < 5 * 60, !allStations.isEmpty {
             isLoading = false
             return
         }
@@ -54,59 +70,31 @@ final class StationStore {
 
         do {
             guard myGeneration == loadGeneration else { return }
-            try await loadFromBackendAPI(location: location, radiusKm: fetchRadius, generation: myGeneration)
+            guard let source = FuelDataSourceRegistry.shared.source(for: country) else {
+                throw FuelDataSourceError.countryNotSupported
+            }
+            let stations = try await source.fetchStations(
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude,
+                radiusKm: fetchRadius
+            )
             guard myGeneration == loadGeneration else { return }
+            allStations = stations
+            lastUpdated = Date()
             loadedRadiusKm = fetchRadius
             isUsingCache = false
+            if country == .spain {
+                await StationCache.shared.set(stations)
+            }
         } catch {
             guard myGeneration == loadGeneration else { return }
-            do {
-                try await loadFromDirectAPI(location: location, generation: myGeneration)
-                guard myGeneration == loadGeneration else { return }
-                loadedRadiusKm = 60
-                isUsingCache = false
-            } catch {
-                guard myGeneration == loadGeneration else { return }
-                if allStations.isEmpty {
-                    self.error = error.localizedDescription
-                }
+            if allStations.isEmpty {
+                self.error = error.localizedDescription
             }
         }
         if myGeneration == loadGeneration {
             isLoading = false
         }
-    }
-
-    private func loadFromBackendAPI(location: CLLocation, radiusKm: Double, generation: Int) async throws {
-        let response = try await BackendAPIService.shared.fetchStationsNearby(
-            latitude: location.coordinate.latitude,
-            longitude: location.coordinate.longitude,
-            radiusKm: radiusKm,
-            limit: 500
-        )
-        guard generation == loadGeneration else { return }
-        let stations = response.stations.map { $0.toFuelStation() }
-        allStations = stations
-        if let avg = response.average_price {
-            cachedAveragePrice = Decimal(avg)
-        }
-        if let updated = response.last_updated {
-            lastUpdated = BackendAPIService.isoFormatter.date(from: updated) ?? Date()
-        } else {
-            lastUpdated = Date()
-        }
-        await StationCache.shared.set(stations)
-    }
-
-    private func loadFromDirectAPI(location: CLLocation, generation: Int) async throws {
-        let result = try await FuelAPIService.shared.fetchStationsProgressively(
-            latitude: location.coordinate.latitude,
-            longitude: location.coordinate.longitude
-        )
-        guard generation == loadGeneration else { return }
-        allStations = result.all
-        lastUpdated = Date()
-        await StationCache.shared.set(result.all)
     }
 
     // MARK: - Queries (local filtering)
@@ -117,9 +105,16 @@ final class StationStore {
         fuelType: FuelType,
         limit: Int? = nil
     ) -> [FuelStation] {
+        let radiusM = radiusKm * 1000
         var result = allStations
-            .filter { $0.price(for: fuelType) != nil && $0.distanceKm(from: location) <= radiusKm }
-            .sorted { $0.distance(from: location) < $1.distance(from: location) }
+            .compactMap { s -> (FuelStation, Double)? in
+                guard s.price(for: fuelType) != nil else { return nil }
+                let d = location.distance(from: CLLocation(latitude: s.latitude, longitude: s.longitude))
+                guard d <= radiusM else { return nil }
+                return (s, d)
+            }
+            .sorted { $0.1 < $1.1 }
+            .map(\.0)
         if let limit { result = Array(result.prefix(limit)) }
         return result
     }
@@ -129,8 +124,12 @@ final class StationStore {
         radiusKm: Double,
         fuelType: FuelType
     ) -> FuelStation? {
-        allStations
-            .filter { $0.price(for: fuelType) != nil && $0.distanceKm(from: location) <= radiusKm }
+        let radiusM = radiusKm * 1000
+        return allStations
+            .filter {
+                $0.price(for: fuelType) != nil &&
+                location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= radiusM
+            }
             .min { ($0.price(for: fuelType) ?? .greatestFiniteMagnitude) < ($1.price(for: fuelType) ?? .greatestFiniteMagnitude) }
     }
 
@@ -139,8 +138,12 @@ final class StationStore {
         radiusKm: Double,
         fuelType: FuelType
     ) -> Decimal? {
+        let radiusM = radiusKm * 1000
         let prices = allStations
-            .filter { $0.price(for: fuelType) != nil && $0.distanceKm(from: location) <= radiusKm }
+            .filter {
+                $0.price(for: fuelType) != nil &&
+                location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= radiusM
+            }
             .compactMap { $0.price(for: fuelType) }
         guard !prices.isEmpty else { return cachedAveragePrice }
         return prices.reduce(Decimal.zero, +) / Decimal(prices.count)
@@ -186,14 +189,14 @@ final class StationStore {
         }
     }
 
-    var dataFreshnessText: String {
-        guard let lastUpdated else { return "Sin datos" }
+    func dataFreshnessText(loc: Loc) -> String {
+        guard let lastUpdated else { return loc.dataNoData }
         let minutes = Int(Date().timeIntervalSince(lastUpdated) / 60)
-        let prefix = isLoading ? "Actualizando... · " : ""
-        if minutes < 1 { return "\(prefix)Actualizado ahora" }
-        if minutes < 60 { return "\(prefix)Hace \(minutes) min" }
+        let prefix = isLoading ? loc.dataUpdating : ""
+        if minutes < 1 { return "\(prefix)\(loc.dataUpdatedNow)" }
+        if minutes < 60 { return "\(prefix)\(loc.dataMinutesAgo(minutes))" }
         let hours = minutes / 60
-        return "\(prefix)Hace \(hours) h"
+        return "\(prefix)\(loc.dataHoursAgo(hours))"
     }
 
     func priceOpportunity(

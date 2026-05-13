@@ -17,11 +17,11 @@ enum Theme {
         // Legacy aliases — prefer semantic names above
         static let cardBackground = Color(.secondarySystemBackground)
 
-        // Accent — blue-teal, adaptive light/dark
+        // Accent — green, matching widget design
         static let accent = Color(UIColor { tc in
             tc.userInterfaceStyle == .dark
-                ? UIColor(red: 0.121, green: 0.639, blue: 0.620, alpha: 1)
-                : UIColor(red: 0.054, green: 0.486, blue: 0.482, alpha: 1)
+                ? UIColor(red: 0.18, green: 0.72, blue: 0.36, alpha: 1)
+                : UIColor(red: 0.14, green: 0.62, blue: 0.30, alpha: 1)
         })
 
         // Semantic pricing
@@ -31,6 +31,13 @@ enum Theme {
         static let expensivePrice = Color.red
         static let cheapPrice = Color.green
         static let saving = Color.green
+
+        // Charging stations
+        static let charging = Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.30, green: 0.55, blue: 0.95, alpha: 1)
+                : UIColor(red: 0.20, green: 0.45, blue: 0.85, alpha: 1)
+        })
 
         // Markers
         static let markerDefault = Color(.tertiaryLabel)

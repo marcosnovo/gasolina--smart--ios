@@ -5,6 +5,7 @@ struct GasolinaSmartApp: App {
     @State private var preferences = UserPreferences()
     @State private var locationManager = LocationManager()
     @State private var stationStore = StationStore()
+    @State private var chargingStationStore = ChargingStationStore()
     @State private var appState = AppState()
     @State private var notificationManager = NotificationManager()
 
@@ -14,6 +15,7 @@ struct GasolinaSmartApp: App {
                 .environment(preferences)
                 .environment(locationManager)
                 .environment(stationStore)
+                .environment(chargingStationStore)
                 .environment(appState)
                 .environment(notificationManager)
                 .onOpenURL { url in

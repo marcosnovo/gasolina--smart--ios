@@ -37,6 +37,22 @@ enum PreferredNavigationApp: String, CaseIterable, Codable {
     }
 }
 
+struct FavoriteAddress: Codable, Identifiable, Hashable {
+    let id: UUID
+    var name: String
+    var latitude: Double
+    var longitude: Double
+    var savedDate: Date
+
+    init(id: UUID = UUID(), name: String, latitude: Double, longitude: Double) {
+        self.id = id
+        self.name = name
+        self.latitude = latitude
+        self.longitude = longitude
+        self.savedDate = Date()
+    }
+}
+
 @Observable
 final class UserPreferences {
     var vehicles: [Vehicle] {
@@ -57,8 +73,38 @@ final class UserPreferences {
     var appearance: AppAppearance {
         didSet { save() }
     }
-    var preferredNavigationApp: PreferredNavigationApp {
+    var enabledNavigationApps: Set<PreferredNavigationApp> {
         didSet { save() }
+    }
+    var favoriteAddresses: [FavoriteAddress] {
+        didSet { save() }
+    }
+    var showChargingStations: Bool {
+        didSet { save() }
+    }
+    var selectedCountry: Country {
+        didSet {
+            if oldValue != selectedCountry {
+                let supported = selectedCountry.supportedFuelTypes
+                if !supported.contains(selectedFuelType) {
+                    selectedFuelType = selectedCountry.defaultFuel
+                }
+                save()
+            }
+        }
+    }
+    var appLanguage: AppLanguage {
+        didSet { save() }
+    }
+
+    var loc: Loc { Loc(appLanguage) }
+    var resolvedLanguage: AppLanguage { appLanguage.resolved }
+
+    var preferredNavigationApp: PreferredNavigationApp {
+        if enabledNavigationApps.count == 1, let single = enabledNavigationApps.first {
+            return single
+        }
+        return .appleMaps
     }
 
     var colorScheme: ColorScheme? {
@@ -139,8 +185,25 @@ final class UserPreferences {
         favoriteStationIds = Set(ids)
         let appearanceRaw = defaults.string(forKey: "appearance") ?? AppAppearance.system.rawValue
         appearance = AppAppearance(rawValue: appearanceRaw) ?? .system
-        let navRaw = defaults.string(forKey: "preferredNavigationApp") ?? PreferredNavigationApp.appleMaps.rawValue
-        preferredNavigationApp = PreferredNavigationApp(rawValue: navRaw) ?? .appleMaps
+        if let addrData = defaults.data(forKey: "favoriteAddresses"),
+           let decoded = try? JSONDecoder().decode([FavoriteAddress].self, from: addrData) {
+            favoriteAddresses = decoded
+        } else {
+            favoriteAddresses = []
+        }
+        if let navArray = defaults.stringArray(forKey: "enabledNavigationApps") {
+            enabledNavigationApps = Set(navArray.compactMap { PreferredNavigationApp(rawValue: $0) })
+        } else if let navRaw = defaults.string(forKey: "preferredNavigationApp"),
+                  let app = PreferredNavigationApp(rawValue: navRaw) {
+            enabledNavigationApps = [app]
+        } else {
+            enabledNavigationApps = [.appleMaps]
+        }
+        showChargingStations = defaults.object(forKey: "showChargingStations") as? Bool ?? false
+        let countryRaw = defaults.string(forKey: "selectedCountry") ?? Country.spain.rawValue
+        selectedCountry = Country(rawValue: countryRaw) ?? .spain
+        let langRaw = defaults.string(forKey: "appLanguage") ?? AppLanguage.system.rawValue
+        appLanguage = AppLanguage(rawValue: langRaw) ?? .system
     }
 
     func addVehicle(_ vehicle: Vehicle) {
@@ -167,6 +230,14 @@ final class UserPreferences {
         favoriteStationIds.contains(stationId)
     }
 
+    func addFavoriteAddress(_ address: FavoriteAddress) {
+        favoriteAddresses.append(address)
+    }
+
+    func removeFavoriteAddress(_ address: FavoriteAddress) {
+        favoriteAddresses.removeAll { $0.id == address.id }
+    }
+
     private var saveWork: DispatchWorkItem?
 
     private func save() {
@@ -185,8 +256,15 @@ final class UserPreferences {
         defaults.set(preferredRadiusKm, forKey: "preferredRadiusKm")
         defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
         defaults.set(Array(favoriteStationIds), forKey: "favoriteStationIds")
+        if let addrData = try? JSONEncoder().encode(favoriteAddresses) {
+            defaults.set(addrData, forKey: "favoriteAddresses")
+        }
         defaults.set(appearance.rawValue, forKey: "appearance")
-        defaults.set(preferredNavigationApp.rawValue, forKey: "preferredNavigationApp")
+        defaults.set(enabledNavigationApps.map(\.rawValue), forKey: "enabledNavigationApps")
+        defaults.set(showChargingStations, forKey: "showChargingStations")
+        defaults.set(selectedCountry.rawValue, forKey: "selectedCountry")
+        defaults.set(appLanguage.rawValue, forKey: "appLanguage")
+        UserDefaults(suiteName: "group.MarcosNovo.GasolinaSmart")?.set(appLanguage.rawValue, forKey: "appLanguage")
     }
 }
 

@@ -13,6 +13,7 @@ struct FuelStation: Identifiable, Codable, Equatable, Sendable {
     let prices: [FuelType: Decimal]
     let lastUpdated: Date
     var isFavorite: Bool
+    var country: Country
 
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -37,14 +38,14 @@ struct FuelStation: Identifiable, Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, brand, address, municipality, province
-        case latitude, longitude, prices, lastUpdated, isFavorite
+        case latitude, longitude, prices, lastUpdated, isFavorite, country
     }
 
     init(id: String, name: String, brand: String, address: String,
          municipality: String, province: String,
          latitude: Double, longitude: Double,
          prices: [FuelType: Decimal], lastUpdated: Date,
-         isFavorite: Bool = false) {
+         isFavorite: Bool = false, country: Country = .spain) {
         self.id = id
         self.name = name
         self.brand = brand
@@ -56,6 +57,7 @@ struct FuelStation: Identifiable, Codable, Equatable, Sendable {
         self.prices = prices
         self.lastUpdated = lastUpdated
         self.isFavorite = isFavorite
+        self.country = country
     }
 
     init(from decoder: Decoder) throws {
@@ -70,6 +72,7 @@ struct FuelStation: Identifiable, Codable, Equatable, Sendable {
         longitude = try container.decode(Double.self, forKey: .longitude)
         lastUpdated = try container.decode(Date.self, forKey: .lastUpdated)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        country = try container.decodeIfPresent(Country.self, forKey: .country) ?? .spain
 
         let rawPrices = try container.decode([String: String].self, forKey: .prices)
         var decoded: [FuelType: Decimal] = [:]
@@ -93,6 +96,7 @@ struct FuelStation: Identifiable, Codable, Equatable, Sendable {
         try container.encode(longitude, forKey: .longitude)
         try container.encode(lastUpdated, forKey: .lastUpdated)
         try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encode(country, forKey: .country)
 
         var rawPrices: [String: String] = [:]
         for (key, value) in prices {

@@ -33,6 +33,7 @@ struct WidgetStationData: Codable {
     let lastUpdated: Date
     let isDarkMode: Bool
     let navigationURLString: String
+    var fuelTypeUnit: String?
 
     var deepLinkURL: URL {
         URL(string: "\(WidgetConstants.urlScheme)://station/\(stationId)")!
@@ -68,7 +69,8 @@ struct WidgetStationData: Codable {
         stationCount: 12,
         lastUpdated: Date(),
         isDarkMode: false,
-        navigationURLString: "http://maps.apple.com/?daddr=40.4168,-3.7038&dirflg=d"
+        navigationURLString: "http://maps.apple.com/?daddr=40.4168,-3.7038&dirflg=d",
+        fuelTypeUnit: "€/L"
     )
 }
 
@@ -78,4 +80,35 @@ enum VehicleType: String {
 
 enum VehicleColor: String {
     case black, white, silver, red, blue, darkBlue, green, orange, yellow, brown
+}
+
+// MARK: - Widget Localization
+
+enum WidgetLoc {
+    private static var lang: String {
+        if let defaults = UserDefaults(suiteName: WidgetConstants.appGroupId),
+           let raw = defaults.string(forKey: "appLanguage"), raw != "system" {
+            return raw
+        }
+        let preferred = Locale.preferredLanguages.first ?? "en"
+        if preferred.hasPrefix("es") { return "es" }
+        if preferred.hasPrefix("fr") { return "fr" }
+        if preferred.hasPrefix("de") { return "de" }
+        if preferred.hasPrefix("pt") { return "pt" }
+        return "en"
+    }
+
+    private static func s(_ es: String, _ en: String, _ fr: String, _ de: String, _ pt: String) -> String {
+        switch lang {
+        case "es": es; case "fr": fr; case "de": de; case "pt": pt; default: en
+        }
+    }
+
+    static var navigate: String { s("Navegar", "Navigate", "Naviguer", "Navigieren", "Navegar") }
+    static var openApp: String { s("Abre Gasolina Smart", "Open Gasolina Smart", "Ouvrez Gasolina Smart", "Gasolina Smart öffnen", "Abra Gasolina Smart") }
+    static var toSeeStations: String { s("para ver gasolineras", "to see fuel stations", "pour voir les stations", "um Tankstellen zu sehen", "para ver postos") }
+    static var darkWidgetName: String { s("Gasolinera - Oscuro", "Station - Dark", "Station - Sombre", "Tankstelle - Dunkel", "Posto - Escuro") }
+    static var darkWidgetDesc: String { s("Precio y navegación con fondo oscuro.", "Price and navigation with dark background.", "Prix et navigation sur fond sombre.", "Preis und Navigation mit dunklem Hintergrund.", "Preço e navegação com fundo escuro.") }
+    static var lightWidgetName: String { s("Gasolinera - Claro", "Station - Light", "Station - Clair", "Tankstelle - Hell", "Posto - Claro") }
+    static var lightWidgetDesc: String { s("Precio y navegación con fondo claro.", "Price and navigation with light background.", "Prix et navigation sur fond clair.", "Preis und Navigation mit hellem Hintergrund.", "Preço e navegação com fundo claro.") }
 }

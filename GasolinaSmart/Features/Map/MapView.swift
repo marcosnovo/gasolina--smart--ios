@@ -6,17 +6,23 @@ struct MapView: View {
     @Environment(UserPreferences.self) private var preferences
     @Environment(LocationManager.self) private var locationManager
     @Environment(AppState.self) private var appState
+    @Environment(ChargingStationStore.self) private var chargingStore
+
+    private var loc: Loc { preferences.loc }
 
     @State private var showFuelPicker = false
     @State private var showRadiusPicker = false
 
     @State private var visibleStations: [FuelStation] = []
+    @State private var visibleChargingStations: [ChargingStation] = []
     @State private var cachedCheapest: FuelStation?
     @State private var cachedAveragePrice: Decimal?
 
     @State private var centerOnUserCounter = 0
     @State private var zoomRadiusCounter = 0
     @State private var showNavigationPicker = false
+    @State private var initialLoadComplete = false
+    @State private var selectedChargingStation: ChargingStation?
 
     var body: some View {
         ZStack {
@@ -28,18 +34,35 @@ struct MapView: View {
                     appState.selectedStation = station
                     appState.showStationDetail = true
                 },
+                chargingStations: visibleChargingStations,
+                onChargingStationTapped: { station in
+                    selectedChargingStation = station
+                },
                 centerOnUserCounter: centerOnUserCounter,
                 zoomRadiusKm: preferences.preferredRadiusKm,
                 zoomRadiusCounter: zoomRadiusCounter,
                 isDarkMode: preferences.appearance == .dark
             )
             .ignoresSafeArea()
+            .opacity(initialLoadComplete ? 1 : 0)
+
+            if !initialLoadComplete {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text(loc.mapLoading)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemBackground))
+            }
 
             VStack(spacing: 0) {
                 topBar
                     .padding(.top, Theme.Spacing.xs)
 
-                if store.isLoading && store.allStations.isEmpty {
+                if isLoadingAnyStations && initialLoadComplete {
                     loadingPill
                         .padding(.top, Theme.Spacing.sm)
                 }
@@ -67,35 +90,77 @@ struct MapView: View {
                 near: locationManager.location,
                 radiusKm: preferences.preferredRadiusKm
             )
+            if preferences.showChargingStations, let location = locationManager.location {
+                await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
+                updateChargingStations()
+            }
         }
         .onChange(of: locationManager.location) { _, newLocation in
             updateVisibleStations()
+            markReadyIfNeeded()
             if let newLocation {
                 Task {
                     await store.loadStations(
                         near: newLocation,
                         radiusKm: preferences.preferredRadiusKm
                     )
+                    if preferences.showChargingStations {
+                        await chargingStore.loadStations(near: newLocation, radiusKm: preferences.preferredRadiusKm)
+                        updateChargingStations()
+                    }
                 }
             }
         }
         .onChange(of: store.allStations) { _, _ in
             updateVisibleStations()
+            markReadyIfNeeded()
         }
         .onChange(of: preferences.preferredRadiusKm) { _, _ in
             updateVisibleStations()
+            updateChargingStations()
             zoomRadiusCounter += 1
             Task {
                 await store.reloadIfNeeded(
                     location: locationManager.location,
                     radiusKm: preferences.preferredRadiusKm
                 )
+                if preferences.showChargingStations, let location = locationManager.location {
+                    await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
+                    updateChargingStations()
+                }
             }
         }
         .onChange(of: preferences.selectedFuelType) { _, _ in
             updateVisibleStations()
         }
-        .onChange(of: preferences.preferredNavigationApp) { _, _ in
+        .onChange(of: chargingStore.stations) { _, _ in
+            updateChargingStations()
+        }
+        .onChange(of: preferences.showChargingStations) { _, showCharging in
+            if showCharging, let location = locationManager.location {
+                Task {
+                    await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
+                    updateChargingStations()
+                }
+            } else {
+                visibleChargingStations = []
+            }
+        }
+        .onChange(of: preferences.selectedCountry) { _, newCountry in
+            store.switchCountry(newCountry)
+            visibleStations = []
+            cachedCheapest = nil
+            cachedAveragePrice = nil
+            if let location = locationManager.location {
+                Task {
+                    await store.loadStations(
+                        near: location,
+                        radiusKm: preferences.preferredRadiusKm
+                    )
+                }
+            }
+        }
+        .onChange(of: preferences.enabledNavigationApps) { _, _ in
             if let location = locationManager.location {
                 updateWidgetData(location: location)
             }
@@ -122,10 +187,18 @@ struct MapView: View {
         }
         .sheet(isPresented: $showNavigationPicker) {
             if let cheapest = cachedCheapest {
-                NavigationPickerSheet(station: cheapest)
+                let apps = preferences.enabledNavigationApps.isEmpty
+                    ? Set(PreferredNavigationApp.allCases)
+                    : preferences.enabledNavigationApps
+                NavigationPickerSheet(station: cheapest, availableApps: apps)
                     .presentationDetents([.height(180)])
                     .presentationDragIndicator(.visible)
             }
+        }
+        .sheet(item: $selectedChargingStation) { station in
+            ChargingStationDetailView(station: station)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -202,7 +275,12 @@ struct MapView: View {
                         appState.showStationDetail = true
                     },
                     onNavigate: {
-                        showNavigationPicker = true
+                        if preferences.enabledNavigationApps.count == 1,
+                           let app = preferences.enabledNavigationApps.first {
+                            NavigationHelper.openPreferred(station: cheapest, app: app)
+                        } else {
+                            showNavigationPicker = true
+                        }
                     }
                 )
                 .background(.regularMaterial)
@@ -211,10 +289,10 @@ struct MapView: View {
             } else if locationManager.isAuthorized && locationManager.location != nil
                         && !store.allStations.isEmpty && visibleStations.isEmpty {
                 VStack(spacing: 4) {
-                    Text("Sin gasolineras en \(Int(preferences.preferredRadiusKm)) km")
+                    Text(loc.mapNoStations(Int(preferences.preferredRadiusKm)))
                         .font(Theme.Fonts.subheadline)
                         .fontWeight(.medium)
-                    Text("Amplía el radio de búsqueda")
+                    Text(loc.mapExpandRadius)
                         .font(Theme.Fonts.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -233,7 +311,7 @@ struct MapView: View {
     private var loadingPill: some View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
-            Text("Cargando gasolineras...")
+            Text(loc.mapLoadingStations)
                 .font(Theme.Fonts.pillLabel)
                 .foregroundStyle(.secondary)
         }
@@ -241,6 +319,8 @@ struct MapView: View {
         .padding(.vertical, 10)
         .background(.regularMaterial)
         .clipShape(Capsule())
+        .transition(.opacity.combined(with: .move(edge: .top)))
+        .animation(.easeInOut(duration: 0.3), value: isLoadingAnyStations)
     }
 
     private var freshnessLabel: some View {
@@ -249,10 +329,14 @@ struct MapView: View {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 9))
             }
-            Text(store.dataFreshnessText)
+            Text(store.dataFreshnessText(loc: loc))
                 .font(Theme.Fonts.caption)
             if !visibleStations.isEmpty {
-                Text("· \(visibleStations.count) estaciones")
+                Text("· \(visibleStations.count) \(loc.stations)")
+                    .font(Theme.Fonts.caption)
+            }
+            if !visibleChargingStations.isEmpty {
+                Text("· \(visibleChargingStations.count) \(loc.chargers)")
                     .font(Theme.Fonts.caption)
             }
         }
@@ -268,11 +352,11 @@ struct MapView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 13))
                 .foregroundStyle(.orange)
-            Text("Error al cargar")
+            Text(loc.mapLoadError)
                 .font(Theme.Fonts.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Reintentar") {
+            Button(loc.mapRetry) {
                 Task { await store.loadStations(near: locationManager.location) }
             }
             .font(Theme.Fonts.pillLabel)
@@ -285,14 +369,14 @@ struct MapView: View {
 
     private var noLocationOverlay: some View {
         VStack(spacing: Theme.Spacing.md) {
-            Text("Ubicación no disponible")
+            Text(loc.mapNoLocation)
                 .font(Theme.Fonts.headline)
-            Text("Activa la ubicación en Ajustes o busca por ciudad.")
+            Text(loc.mapEnableLocation)
                 .font(Theme.Fonts.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button { appState.selectedTab = .search } label: {
-                Text("Buscar por ciudad")
+                Text(loc.mapSearchByCity)
                     .font(Theme.Fonts.headline)
             }
             .buttonStyle(.borderedProminent)
@@ -306,6 +390,19 @@ struct MapView: View {
 
     // MARK: - Helpers
 
+    private var isLoadingAnyStations: Bool {
+        store.isLoading || (preferences.showChargingStations && chargingStore.isLoading)
+    }
+
+    private func markReadyIfNeeded() {
+        guard !initialLoadComplete else { return }
+        if locationManager.location != nil, !store.allStations.isEmpty {
+            withAnimation(.easeIn(duration: 0.3)) {
+                initialLoadComplete = true
+            }
+        }
+    }
+
     private func updateVisibleStations() {
         guard let location = locationManager.location else {
             visibleStations = []
@@ -317,7 +414,7 @@ struct MapView: View {
             location: location,
             radiusKm: preferences.preferredRadiusKm,
             fuelType: preferences.selectedFuelType,
-            limit: 150
+            limit: 100
         )
         visibleStations = nearby
 
@@ -347,6 +444,7 @@ struct MapView: View {
         WidgetDataProvider.update(
             cheapestStation: cheapest,
             fuelType: preferences.selectedFuelType,
+            country: preferences.selectedCountry,
             averagePrice: cachedAveragePrice,
             tankLiters: preferences.tankSizeLiters,
             userLocation: location,
@@ -372,6 +470,17 @@ struct MapView: View {
         }
     }
 
+    private func updateChargingStations() {
+        guard preferences.showChargingStations, let location = locationManager.location else {
+            visibleChargingStations = []
+            return
+        }
+        visibleChargingStations = chargingStore.nearbyStations(
+            location: location,
+            radiusKm: preferences.preferredRadiusKm
+        )
+    }
+
     private func resolvePendingDeepLink() {
         guard let pendingId = appState.pendingStationId else { return }
         if let station = store.allStations.first(where: { $0.id == pendingId }) {
@@ -389,15 +498,17 @@ struct RadiusPickerSheet: View {
     @Environment(UserPreferences.self) private var preferences
     @Environment(\.dismiss) private var dismiss
 
+    private var loc: Loc { preferences.loc }
+
     @State private var sliderValue: Double = 5
 
     var body: some View {
         VStack(spacing: Theme.Spacing.lg) {
             HStack {
-                Text("Radio de búsqueda")
+                Text(loc.mapSearchRadius)
                     .font(Theme.Fonts.headline)
                 Spacer()
-                Button("Aplicar") {
+                Button(loc.mapApply) {
                     preferences.preferredRadiusKm = sliderValue
                     dismiss()
                 }
@@ -410,7 +521,7 @@ struct RadiusPickerSheet: View {
                 .animation(.snappy(duration: 0.2), value: sliderValue)
 
             Slider(value: $sliderValue, in: 1...50, step: 1) {
-                Text("Radio")
+                Text(loc.mapRadius)
             } minimumValueLabel: {
                 Text("1").font(Theme.Fonts.caption).foregroundStyle(.secondary)
             } maximumValueLabel: {

@@ -70,7 +70,10 @@ actor PriceHistoryStore {
     private func save() {
         guard let url = fileURL,
               let data = try? JSONEncoder().encode(records) else { return }
-        try? data.write(to: url, options: .atomic)
+        let snapshot = data
+        Task.detached(priority: .background) {
+            try? snapshot.write(to: url, options: .atomic)
+        }
     }
 
     private var fileURL: URL? {

@@ -6,20 +6,27 @@ struct SettingsView: View {
     @Environment(NotificationManager.self) private var notificationManager
     @State private var showAddVehicle = false
     @State private var editingVehicle: Vehicle?
+    private var loc: Loc { preferences.loc }
 
     var body: some View {
         NavigationStack {
-            Form {
-                vehiclesSection
-                appearanceSection
-                navigationSection
-                searchSection
-                notificationsSection
-                infoSection
-                privacySection
-                appSection
+            ScrollView {
+                VStack(spacing: 20) {
+                    countrySection
+                    languageSection
+                    vehiclesSection
+                    mapSection
+                    navigationSection
+                    appearanceSection
+                    notificationsSection
+                    infoSection
+                    appSection
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-            .navigationTitle("Ajustes")
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle(loc.settingsTitle)
             .sheet(isPresented: $showAddVehicle) {
                 VehicleEditSheet(
                     onSave: { vehicle in
@@ -38,9 +45,102 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Country
+
+    private var countrySection: some View {
+        SettingsCard {
+            SettingsSectionHeader(icon: "globe", title: loc.settingsCountry, color: .green)
+
+            ForEach(Country.allCases) { country in
+                let isSelected = preferences.selectedCountry == country
+                Button {
+                    preferences.selectedCountry = country
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(country.flag)
+                            .font(.system(size: 24))
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(country.displayName)
+                                .font(.system(size: 15, weight: .semibold))
+                            Text(loc.freshnessText(country.dataFreshness))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color(.tertiaryLabel))
+                        }
+                        Spacer()
+                        if isSelected {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if country != Country.allCases.last {
+                    Divider().padding(.leading, 44)
+                }
+            }
+
+            Text(loc.settingsCountryFooter)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Language
+
+    private var languageSection: some View {
+        @Bindable var prefs = preferences
+        return SettingsCard {
+            SettingsSectionHeader(icon: "globe.americas.fill", title: loc.settingsLanguage, color: .cyan)
+
+            ForEach(AppLanguage.allCases) { language in
+                let isSelected = preferences.appLanguage == language
+                Button {
+                    preferences.appLanguage = language
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(language.flag)
+                            .font(.system(size: 24))
+                            .frame(width: 28)
+                        Text(language.displayName)
+                            .font(.system(size: 15, weight: .semibold))
+                        Spacer()
+                        if isSelected {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.cyan)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if language != AppLanguage.allCases.last {
+                    Divider().padding(.leading, 44)
+                }
+            }
+
+            Text(loc.settingsLanguageFooter)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Vehicles
+
     private var vehiclesSection: some View {
-        Section {
+        SettingsCard {
+            SettingsSectionHeader(icon: "car.fill", title: loc.settingsVehicles, color: Theme.Colors.accent)
+
             ForEach(preferences.vehicles) { vehicle in
+                let isSelected = preferences.selectedVehicleId == vehicle.id
                 Button {
                     preferences.selectedVehicleId = vehicle.id
                 } label: {
@@ -50,207 +150,359 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 4) {
                                 Text(vehicle.name)
-                                    .font(.headline)
+                                    .font(.system(size: 15, weight: .semibold))
                                 if !vehicle.brand.isEmpty {
                                     Text("· \(vehicle.brand)")
-                                        .font(.subheadline)
+                                        .font(.system(size: 14))
                                         .foregroundStyle(Color(.secondaryLabel))
                                 }
                             }
-                            Text("\(vehicle.fuelType.displayName) · \(Int(vehicle.tankSizeLiters)) L")
-                                .font(.caption)
-                                .foregroundStyle(Color(.secondaryLabel))
+                            Text("\(vehicle.fuelType.displayName(for: preferences.selectedCountry)) · \(Int(vehicle.tankSizeLiters)) L · \(String(format: "%.1f", vehicle.consumptionL100Km)) L/100km")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color(.tertiaryLabel))
                         }
 
                         Spacer()
 
-                        if preferences.selectedVehicleId == vehicle.id {
+                        if isSelected {
                             Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 20))
                                 .foregroundStyle(Theme.Colors.accent)
                         }
                     }
+                    .padding(.vertical, 6)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .swipeActions(edge: .trailing) {
+                .contextMenu {
+                    Button {
+                        editingVehicle = vehicle
+                    } label: {
+                        Label(loc.edit, systemImage: "pencil")
+                    }
                     if preferences.vehicles.count > 1 {
                         Button(role: .destructive) {
                             preferences.removeVehicle(vehicle)
                         } label: {
-                            Label("Eliminar", systemImage: "trash")
+                            Label(loc.delete, systemImage: "trash")
                         }
                     }
-                    Button {
-                        editingVehicle = vehicle
-                    } label: {
-                        Label("Editar", systemImage: "pencil")
-                    }
-                    .tint(.orange)
+                }
+
+                if vehicle.id != preferences.vehicles.last?.id {
+                    Divider()
+                        .padding(.leading, 54)
                 }
             }
 
             Button {
                 showAddVehicle = true
             } label: {
-                Label("Añadir vehículo", systemImage: "plus.circle.fill")
-                    .foregroundStyle(Theme.Colors.accent)
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 18))
+                    Text(loc.settingsAddVehicle)
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(Theme.Colors.accent)
+                .padding(.top, 4)
             }
-        } header: {
-            Text("Mis vehículos")
-        } footer: {
-            Text("El vehículo seleccionado determina el combustible del mapa.")
+            .buttonStyle(.plain)
+
+            Text(loc.settingsVehicleFooter)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .padding(.top, 4)
         }
     }
 
+    // MARK: - Map
+
+    private var mapSection: some View {
+        @Bindable var prefs = preferences
+        return SettingsCard {
+            SettingsSectionHeader(icon: "map.fill", title: loc.settingsMap, color: .orange)
+
+            SettingsRow(icon: "scope", label: loc.settingsSearchRadius, color: .orange) {
+                Picker("", selection: $prefs.preferredRadiusKm) {
+                    ForEach(UserPreferences.availableRadii, id: \.self) { radius in
+                        Text("\(Int(radius)) km").tag(radius)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(Color(.label))
+            }
+
+            Divider().padding(.leading, 44)
+
+            SettingsRow(icon: "bolt.car.fill", label: loc.settingsCharging, color: Theme.Colors.charging) {
+                Toggle("", isOn: $prefs.showChargingStations)
+                    .tint(Theme.Colors.charging)
+                    .labelsHidden()
+            }
+
+            Text(loc.settingsChargingFooter)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Navigation
+
+    private var navigationSection: some View {
+        SettingsCard {
+            SettingsSectionHeader(icon: "location.fill", title: loc.settingsNavigation, color: .blue)
+
+            ForEach(PreferredNavigationApp.allCases, id: \.self) { app in
+                let isEnabled = preferences.enabledNavigationApps.contains(app)
+                SettingsRow(icon: app.icon, label: app.displayName, color: .blue) {
+                    Toggle("", isOn: Binding(
+                        get: { isEnabled },
+                        set: { newValue in
+                            if newValue {
+                                preferences.enabledNavigationApps.insert(app)
+                            } else if preferences.enabledNavigationApps.count > 1 {
+                                preferences.enabledNavigationApps.remove(app)
+                            }
+                        }
+                    ))
+                    .tint(Theme.Colors.accent)
+                    .labelsHidden()
+                }
+
+                if app != PreferredNavigationApp.allCases.last {
+                    Divider().padding(.leading, 44)
+                }
+            }
+
+            Text(preferences.enabledNavigationApps.count == 1
+                 ? loc.settingsNavSingle
+                 : loc.settingsNavMultiple)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Appearance
+
     private var appearanceSection: some View {
         @Bindable var prefs = preferences
-        return Section("Apariencia") {
-            Picker("Tema", selection: $prefs.appearance) {
+        return SettingsCard {
+            SettingsSectionHeader(icon: "paintbrush.fill", title: loc.settingsAppearance, color: .purple)
+
+            Picker(loc.settingsTheme, selection: $prefs.appearance) {
                 ForEach(AppAppearance.allCases, id: \.self) { option in
-                    Text(option.displayName).tag(option)
+                    Text(loc.appearanceName(option)).tag(option)
                 }
             }
             .pickerStyle(.segmented)
         }
     }
 
-    private var navigationSection: some View {
-        Section {
-            ForEach(PreferredNavigationApp.allCases, id: \.self) { app in
-                Button {
-                    preferences.preferredNavigationApp = app
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: app.icon)
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(Theme.Colors.accent)
-                            .frame(width: 28)
-                        Text(app.displayName)
-                            .foregroundStyle(Color(.label))
-                        Spacer()
-                        if preferences.preferredNavigationApp == app {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(Theme.Colors.accent)
-                                .fontWeight(.semibold)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-        } header: {
-            Text("Navegación")
-        } footer: {
-            Text("Servicio de navegación para el widget y accesos directos.")
-        }
-    }
-
-    private var searchSection: some View {
-        @Bindable var prefs = preferences
-        return Section("Búsqueda") {
-            Picker("Radio de búsqueda", selection: $prefs.preferredRadiusKm) {
-                ForEach(UserPreferences.availableRadii, id: \.self) { radius in
-                    Text("\(Int(radius)) km").tag(radius)
-                }
-            }
-        }
-    }
+    // MARK: - Notifications
 
     private var notificationsSection: some View {
-        Section {
+        SettingsCard {
+            SettingsSectionHeader(icon: "bell.fill", title: loc.settingsNotifications, color: .red)
+
             if notificationManager.hasBeenDenied {
-                Label {
+                HStack(spacing: 12) {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.orange)
+                        .frame(width: 28)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Notificaciones desactivadas")
-                            .font(.subheadline)
-                        Text("Actívalas en Ajustes del sistema.")
-                            .font(.caption)
+                        Text(loc.settingsNotifDisabled)
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(loc.settingsNotifOpenSystem)
+                            .font(.system(size: 12))
                             .foregroundStyle(Color(.secondaryLabel))
                     }
-                } icon: {
-                    Image(systemName: "bell.slash")
-                        .foregroundStyle(.orange)
-                }
-                Button("Abrir Ajustes") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
+                    Spacer()
+                    Button(loc.settingsOpen) {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
                     }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(.orange)
+                    .clipShape(Capsule())
                 }
-                .font(.subheadline)
             } else {
                 if !notificationManager.isAuthorized {
                     Button {
                         Task { await notificationManager.requestAuthorization() }
                     } label: {
-                        Label("Activar notificaciones", systemImage: "bell.badge")
+                        HStack(spacing: 8) {
+                            Image(systemName: "bell.badge")
+                                .font(.system(size: 14))
+                            Text(loc.settingsNotifEnable)
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundStyle(Theme.Colors.accent)
                     }
+                    .buttonStyle(.plain)
                 }
 
                 ForEach(AlertType.allCases, id: \.rawValue) { alertType in
-                    Toggle(isOn: Binding(
-                        get: { notificationManager.isAlertEnabled(alertType) },
-                        set: { _ in
-                            if !notificationManager.isAuthorized {
-                                Task { await notificationManager.requestAuthorization() }
+                    SettingsRow(icon: "bell.badge", label: loc.alertTypeName(alertType), color: .red) {
+                        Toggle("", isOn: Binding(
+                            get: { notificationManager.isAlertEnabled(alertType) },
+                            set: { _ in
+                                if !notificationManager.isAuthorized {
+                                    Task { await notificationManager.requestAuthorization() }
+                                }
+                                notificationManager.toggleAlertType(alertType)
                             }
-                            notificationManager.toggleAlertType(alertType)
-                        }
-                    )) {
-                        Text(alertType.displayName)
-                            .font(.subheadline)
+                        ))
+                        .tint(Theme.Colors.accent)
+                        .labelsHidden()
                     }
-                    .tint(Theme.Colors.accent)
                 }
             }
-        } header: {
-            Text("Notificaciones")
-        } footer: {
-            Text("Recibe alertas cuando los precios cambien según tus preferencias.")
+
+            Text(loc.settingsNotifFooter)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .padding(.top, 4)
         }
     }
+
+    // MARK: - Info
 
     private var infoSection: some View {
-        Section("Información") {
-            HStack {
-                Text("Fuente de datos")
-                Spacer()
-                Text("Ministerio de Industria")
+        let country = preferences.selectedCountry
+        return SettingsCard {
+            SettingsSectionHeader(icon: "info.circle.fill", title: loc.settingsInfo, color: .gray)
+
+            SettingsRow(icon: "building.columns.fill", label: loc.settingsDataSource, color: .gray) {
+                Text(country.flag)
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color(.secondaryLabel))
             }
-            HStack {
-                Text("Actualización")
-                Spacer()
-                Text("Cada 30 minutos")
+
+            Text(country.attributionText)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .padding(.leading, 44)
+
+            Divider().padding(.leading, 44)
+
+            SettingsRow(icon: "arrow.clockwise", label: loc.settingsUpdate, color: .gray) {
+                Text(loc.freshnessText(country.dataFreshness))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color(.secondaryLabel))
             }
+
+            Divider().padding(.leading, 44)
+
+            SettingsRow(icon: "bolt.fill", label: loc.settingsChargingSource, color: Theme.Colors.charging) {
+                Text("OpenStreetMap")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+
+            Divider().padding(.leading, 44)
+
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.blue.opacity(0.12))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.blue)
+                }
+                Text(loc.settingsPrivacy)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+            .padding(.top, 4)
         }
     }
 
-    private var privacySection: some View {
-        Section("Privacidad") {
-            Label {
-                Text("Tu ubicación se usa solo en el dispositivo. No se comparte ni almacena.")
-                    .font(.caption)
-                    .foregroundStyle(Color(.secondaryLabel))
-            } icon: {
-                Image(systemName: "lock.shield")
-                    .foregroundStyle(.blue)
-            }
-        }
-    }
+    // MARK: - App
 
     private var appSection: some View {
-        Section {
-            HStack {
-                Spacer()
-                VStack(spacing: 2) {
-                    Text("Gasolina Smart")
-                        .font(.headline)
-                    Text("v1.0")
-                        .font(.caption)
-                        .foregroundStyle(Color(.tertiaryLabel))
-                }
-                Spacer()
+        VStack(spacing: 4) {
+            Text("Gasolina Smart")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(.secondaryLabel))
+            Text("v1.0")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Settings Card
+
+private struct SettingsCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            content
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+// MARK: - Section Header
+
+private struct SettingsSectionHeader: View {
+    let icon: String
+    let title: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(color.opacity(0.12))
+                    .frame(width: 28, height: 28)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(color)
             }
+            Text(title)
+                .font(.system(size: 16, weight: .bold))
+        }
+        .padding(.bottom, 4)
+    }
+}
+
+// MARK: - Settings Row
+
+private struct SettingsRow<Trailing: View>: View {
+    let icon: String
+    let label: String
+    let color: Color
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(color.opacity(0.12))
+                    .frame(width: 28, height: 28)
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(color)
+            }
+            Text(label)
+                .font(.system(size: 14, weight: .medium))
+            Spacer()
+            trailing
         }
     }
 }
@@ -258,7 +510,9 @@ struct SettingsView: View {
 // MARK: - Vehicle Edit Sheet
 
 struct VehicleEditSheet: View {
+    @Environment(UserPreferences.self) private var preferences
     @Environment(\.dismiss) private var dismiss
+    private var loc: Loc { preferences.loc }
     @State private var name: String
     @State private var brand: String
     @State private var fuelType: FuelType
@@ -297,14 +551,14 @@ struct VehicleEditSheet: View {
                 tankSection
                 consumptionSection
             }
-            .navigationTitle(isEditing ? "Editar vehículo" : "Nuevo vehículo")
+            .navigationTitle(isEditing ? loc.vehicleEdit : loc.vehicleNew)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
+                    Button(loc.cancel) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") {
+                    Button(loc.save) {
                         saveVehicle()
                         dismiss()
                     }
@@ -325,41 +579,42 @@ struct VehicleEditSheet: View {
 
     private var previewSection: some View {
         Section {
-            HStack {
-                Spacer()
-                VStack(spacing: 10) {
-                    VehicleAvatar(vehicle: previewVehicle, size: 80)
+            VStack(spacing: 8) {
+                Vehicle3DView(
+                    vehicleType: vehicleType,
+                    vehicleColor: vehicleColor,
+                    height: 240
+                )
 
-                    if !name.isEmpty || !brand.isEmpty {
-                        VStack(spacing: 2) {
-                            if !name.isEmpty {
-                                Text(name)
-                                    .font(.headline)
-                            }
-                            if !brand.isEmpty {
-                                Text(brand)
-                                    .font(.subheadline)
-                                    .foregroundStyle(Color(.secondaryLabel))
-                            }
+                if !name.isEmpty || !brand.isEmpty {
+                    VStack(spacing: 2) {
+                        if !name.isEmpty {
+                            Text(name)
+                                .font(.headline)
+                        }
+                        if !brand.isEmpty {
+                            Text(brand)
+                                .font(.subheadline)
+                                .foregroundStyle(Color(.secondaryLabel))
                         }
                     }
                 }
-                Spacer()
             }
+            .frame(maxWidth: .infinity)
             .listRowBackground(Color.clear)
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)
         }
     }
 
     private var nameSection: some View {
-        Section("Nombre") {
-            TextField("Ej: Mi coche", text: $name)
+        Section(loc.name) {
+            TextField(loc.namePlaceholder, text: $name)
         }
     }
 
     private var brandSection: some View {
-        Section("Marca") {
-            TextField("Ej: Toyota, Seat...", text: $brand)
+        Section(loc.brand) {
+            TextField(loc.brandPlaceholder, text: $brand)
                 .onChange(of: brand) { _, newValue in
                     updateBrandSuggestions(newValue)
                 }
@@ -388,52 +643,52 @@ struct VehicleEditSheet: View {
     }
 
     private var typeSection: some View {
-        Section("Tipo de vehículo") {
-            HStack(spacing: 12) {
-                ForEach(VehicleType.allCases, id: \.self) { type in
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) {
-                            let wasDefault = consumptionL100Km == Vehicle.defaultConsumption(for: vehicleType)
-                            vehicleType = type
-                            if wasDefault || !isEditing {
-                                consumptionL100Km = Vehicle.defaultConsumption(for: type)
+        Section(loc.vehicleType) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(VehicleType.allCases, id: \.self) { type in
+                        let isSelected = vehicleType == type
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                let wasDefault = consumptionL100Km == Vehicle.defaultConsumption(for: vehicleType)
+                                vehicleType = type
+                                if wasDefault || !isEditing {
+                                    consumptionL100Km = Vehicle.defaultConsumption(for: type)
+                                }
+                            }
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: type.icon)
+                                    .font(.system(size: 22, weight: .medium))
+                                    .frame(width: 60, height: 60)
+                                    .background(
+                                        isSelected
+                                            ? Theme.Colors.accent.opacity(0.15)
+                                            : Color(.tertiarySystemFill)
+                                    )
+                                    .foregroundStyle(
+                                        isSelected ? Theme.Colors.accent : Color(.secondaryLabel)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(isSelected ? Theme.Colors.accent : .clear, lineWidth: 2)
+                                    )
+                                Text(loc.vehicleTypeName(type))
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(isSelected ? Theme.Colors.accent : Color(.secondaryLabel))
                             }
                         }
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: type.icon)
-                                .font(.system(size: 20, weight: .medium))
-                                .frame(width: 44, height: 44)
-                                .background(
-                                    vehicleType == type
-                                        ? Theme.Colors.accent.opacity(0.15)
-                                        : Color(.tertiarySystemFill)
-                                )
-                                .foregroundStyle(
-                                    vehicleType == type
-                                        ? Theme.Colors.accent
-                                        : Color(.secondaryLabel)
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .stroke(vehicleType == type ? Theme.Colors.accent : .clear, lineWidth: 2)
-                                )
-                            Text(type.displayName)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(vehicleType == type ? Theme.Colors.accent : Color(.secondaryLabel))
-                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.vertical, 4)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
         }
     }
 
     private var colorSection: some View {
-        Section("Color") {
+        Section(loc.color) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5), spacing: 12) {
                 ForEach(VehicleColor.allCases, id: \.self) { vc in
                     Button {
@@ -463,8 +718,8 @@ struct VehicleEditSheet: View {
     }
 
     private var fuelSection: some View {
-        Section("Combustible") {
-            ForEach(FuelType.allCases) { fuel in
+        Section(loc.fuel) {
+            ForEach(preferences.selectedCountry.supportedFuelTypes) { fuel in
                 Button {
                     fuelType = fuel
                 } label: {
@@ -472,7 +727,7 @@ struct VehicleEditSheet: View {
                         Image(systemName: fuel.icon)
                             .frame(width: 24)
                             .foregroundStyle(Theme.Colors.accent)
-                        Text(fuel.displayName)
+                        Text(fuel.displayName(for: preferences.selectedCountry))
                         Spacer()
                         if fuelType == fuel {
                             Image(systemName: "checkmark")
@@ -486,11 +741,11 @@ struct VehicleEditSheet: View {
     }
 
     private var tankSection: some View {
-        Section("Depósito") {
+        Section(loc.tank) {
             HStack {
-                Text("Tamaño")
+                Text(loc.tankSize)
                 Spacer()
-                TextField("Litros", value: $tankSize, format: .number)
+                TextField(loc.liters, value: $tankSize, format: .number)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 80)
@@ -503,7 +758,7 @@ struct VehicleEditSheet: View {
     private var consumptionSection: some View {
         Section {
             HStack {
-                Text("Consumo medio")
+                Text(loc.avgConsumption)
                 Spacer()
                 TextField("L/100km", value: $consumptionL100Km, format: .number.precision(.fractionLength(1)))
                     .keyboardType(.decimalPad)
@@ -513,9 +768,9 @@ struct VehicleEditSheet: View {
                     .foregroundStyle(Color(.secondaryLabel))
             }
         } header: {
-            Text("Consumo")
+            Text(loc.consumption)
         } footer: {
-            Text("Se usa para calcular el coste real por kilómetro.")
+            Text(loc.consumptionFooter)
         }
     }
 

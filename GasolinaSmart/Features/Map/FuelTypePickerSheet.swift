@@ -4,10 +4,16 @@ struct FuelTypePickerSheet: View {
     @Environment(UserPreferences.self) private var preferences
     @Environment(\.dismiss) private var dismiss
 
+    private var loc: Loc { preferences.loc }
+
+    private var supportedFuels: [FuelType] {
+        preferences.selectedCountry.supportedFuelTypes
+    }
+
     var body: some View {
         NavigationStack {
             List {
-                ForEach(FuelType.allCases) { fuel in
+                ForEach(supportedFuels) { fuel in
                     Button {
                         preferences.selectedFuelType = fuel
                         dismiss()
@@ -16,7 +22,7 @@ struct FuelTypePickerSheet: View {
                             Image(systemName: fuel.icon)
                                 .frame(width: 24)
                                 .foregroundStyle(.blue)
-                            Text(fuel.displayName)
+                            Text(fuel.displayName(for: preferences.selectedCountry))
                             Spacer()
                             if preferences.selectedFuelType == fuel {
                                 Image(systemName: "checkmark")
@@ -27,11 +33,11 @@ struct FuelTypePickerSheet: View {
                     .buttonStyle(.plain)
                 }
             }
-            .navigationTitle("Combustible")
+            .navigationTitle(loc.fuel)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cerrar") { dismiss() }
+                    Button(loc.close) { dismiss() }
                 }
             }
         }

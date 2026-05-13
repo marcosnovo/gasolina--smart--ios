@@ -6,6 +6,7 @@ final class AppState {
     var selectedStation: FuelStation?
     var showStationDetail = false
     var pendingStationId: String?
+    var pendingSearchQuery: String?
 }
 
 enum AppTab: Hashable {
