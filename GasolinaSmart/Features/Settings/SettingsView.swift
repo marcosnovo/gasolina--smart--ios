@@ -386,9 +386,7 @@ struct SettingsView: View {
                     .foregroundStyle(Color(.secondaryLabel))
             }
 
-            Text(country.attributionText)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color(.tertiaryLabel))
+            attributionView(for: country)
                 .padding(.leading, 44)
 
             Divider().padding(.leading, 44)
@@ -423,6 +421,53 @@ struct SettingsView: View {
                     .foregroundStyle(Color(.secondaryLabel))
             }
             .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func attributionView(for country: Country) -> some View {
+        switch country {
+        case .germany:
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Spritpreis-Daten von ")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+                +
+                Text("Tankerkönig")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.blue)
+                +
+                Text(", lizenziert unter ")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+                +
+                Text("CC BY 4.0")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.blue)
+
+                HStack(spacing: 12) {
+                    Button {
+                        if let url = URL(string: "https://creativecommons.tankerkoenig.de") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label("Tankerkönig", systemImage: "link")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    Button {
+                        if let url = URL(string: "https://creativecommons.org/licenses/by/4.0/") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label("CC BY 4.0", systemImage: "link")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                }
+            }
+        default:
+            Text(country.attributionText)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
         }
     }
 
