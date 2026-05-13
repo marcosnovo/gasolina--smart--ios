@@ -11,10 +11,12 @@ import {
   getCountryMetaValue,
 } from "./database";
 import { fetchFromMinisterio, getLastFetchTime, shouldFetch } from "./fetcher";
+import { fetchUK, shouldFetchUK } from "./fetchers/uk";
 
 const app = new Hono();
 
 const FETCH_INTERVAL = parseInt(process.env.FETCH_INTERVAL_MINUTES || "15");
+const UK_FETCH_INTERVAL = parseInt(process.env.UK_FETCH_INTERVAL_MINUTES || "15");
 const PORT = parseInt(process.env.PORT || "3000");
 
 app.use("/*", cors());
@@ -206,30 +208,47 @@ app.post("/api/fetch", async (c) => {
 // --- Cron: periodic fetch ---
 
 async function startCron() {
-  console.log(`[cron] Fetch interval: every ${FETCH_INTERVAL} minutes`);
+  console.log(`[cron] ES interval: ${FETCH_INTERVAL}min, GB interval: ${UK_FETCH_INTERVAL}min`);
 
+  // --- Spain ---
   if (shouldFetch(FETCH_INTERVAL)) {
-    console.log("[cron] No recent data, fetching now...");
+    console.log("[cron:ES] No recent data, fetching now...");
     try {
       await fetchFromMinisterio();
     } catch (e) {
-      console.error("[cron] Initial fetch failed:", e);
+      console.error("[cron:ES] Initial fetch failed:", e);
     }
   } else {
-    console.log(`[cron] Data is fresh (last: ${getLastFetchTime()})`);
+    console.log(`[cron:ES] Data is fresh (last: ${getLastFetchTime()})`);
   }
 
-  setInterval(
-    async () => {
-      console.log("[cron] Scheduled fetch starting...");
-      try {
-        await fetchFromMinisterio();
-      } catch (e) {
-        console.error("[cron] Fetch failed:", e);
-      }
-    },
-    FETCH_INTERVAL * 60 * 1000
-  );
+  setInterval(async () => {
+    console.log("[cron:ES] Scheduled fetch starting...");
+    try {
+      await fetchFromMinisterio();
+    } catch (e) {
+      console.error("[cron:ES] Fetch failed:", e);
+    }
+  }, FETCH_INTERVAL * 60 * 1000);
+
+  // --- UK ---
+  if (shouldFetchUK(UK_FETCH_INTERVAL)) {
+    console.log("[cron:GB] No recent data, fetching now...");
+    try {
+      await fetchUK();
+    } catch (e) {
+      console.error("[cron:GB] Initial fetch failed:", e);
+    }
+  }
+
+  setInterval(async () => {
+    console.log("[cron:GB] Scheduled fetch starting...");
+    try {
+      await fetchUK();
+    } catch (e) {
+      console.error("[cron:GB] Fetch failed:", e);
+    }
+  }, UK_FETCH_INTERVAL * 60 * 1000);
 }
 
 // --- Start ---
