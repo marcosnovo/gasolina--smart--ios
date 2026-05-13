@@ -16,10 +16,10 @@ final class StationStore {
     private var loadGeneration = 0
 
     func loadCacheImmediately() async {
-        guard allStations.isEmpty, activeCountry == .spain else { return }
-        if let cached = await StationCache.shared.getStale() {
+        guard allStations.isEmpty else { return }
+        if let cached = await StationCache.shared.getStale(country: activeCountry) {
             allStations = cached
-            lastUpdated = await StationCache.shared.get()?.timestamp
+            lastUpdated = await StationCache.shared.get(country: activeCountry)?.timestamp
             isUsingCache = true
         }
     }
@@ -52,8 +52,8 @@ final class StationStore {
         let myGeneration = loadGeneration
         let country = activeCountry
 
-        if country == .spain, !force,
-           let age = await StationCache.shared.cacheAge(), age < 5 * 60, !allStations.isEmpty {
+        if !force,
+           let age = await StationCache.shared.cacheAge(country: country), age < 5 * 60, !allStations.isEmpty {
             isLoading = false
             return
         }
@@ -83,9 +83,7 @@ final class StationStore {
             lastUpdated = Date()
             loadedRadiusKm = fetchRadius
             isUsingCache = false
-            if country == .spain {
-                await StationCache.shared.set(stations)
-            }
+            await StationCache.shared.set(stations, country: country)
         } catch {
             guard myGeneration == loadGeneration else { return }
             if allStations.isEmpty {
