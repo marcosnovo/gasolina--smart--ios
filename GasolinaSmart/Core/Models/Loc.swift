@@ -53,7 +53,10 @@ struct Loc {
     var mapRetry: String { s("Reintentar", "Retry", "Réessayer", "Erneut versuchen", "Tentar novamente") }
     var mapNoLocation: String { s("Ubicación no disponible", "Location unavailable", "Position indisponible", "Standort nicht verfügbar", "Localização indisponível") }
     var mapEnableLocation: String { s("Activa la ubicación en Ajustes o busca por ciudad.", "Enable location in Settings or search by city.", "Activez la localisation dans Réglages ou recherchez par ville.", "Standort in Einstellungen aktivieren oder nach Stadt suchen.", "Ative a localização nas Definições ou pesquise por cidade.") }
+    var mapEnableLocationAction: String { s("Activar ubicación", "Enable location", "Activer la localisation", "Standort aktivieren", "Ativar localização") }
+    var mapOpenSettings: String { s("Abrir Ajustes", "Open Settings", "Ouvrir Réglages", "Einstellungen öffnen", "Abrir Definições") }
     var mapSearchByCity: String { s("Buscar por ciudad", "Search by city", "Rechercher par ville", "Nach Stadt suchen", "Pesquisar por cidade") }
+    var mapQuickSearch: String { s("Ciudad", "City", "Ville", "Stadt", "Cidade") }
     var mapSearchRadius: String { s("Radio de búsqueda", "Search radius", "Rayon de recherche", "Suchradius", "Raio de pesquisa") }
     var mapApply: String { s("Aplicar", "Apply", "Appliquer", "Anwenden", "Aplicar") }
     var mapRadius: String { s("Radio", "Radius", "Rayon", "Radius", "Raio") }
@@ -92,6 +95,7 @@ struct Loc {
 
     var favAddresses: String { s("Direcciones", "Addresses", "Adresses", "Adressen", "Moradas") }
     var favStations: String { s("Gasolineras", "Stations", "Stations", "Tankstellen", "Postos") }
+    var favAll: String { s("Todo", "All", "Tout", "Alle", "Tudo") }
     var favTitle: String { s("Favoritos", "Favourites", "Favoris", "Favoriten", "Favoritos") }
     var favEmpty: String { s("Aún no tienes\nfavoritos", "You don't have\nany favourites yet", "Vous n'avez pas\nencore de favoris", "Sie haben noch\nkeine Favoriten", "Ainda não tem\nfavoritos") }
     var favEmptyBody: String { s("Añade gasolineras desde el mapa o guarda direcciones desde el buscador.", "Add stations from the map or save addresses from the search.", "Ajoutez des stations depuis la carte ou sauvegardez des adresses.", "Tankstellen von der Karte oder Adressen aus der Suche hinzufügen.", "Adicione postos a partir do mapa ou guarde moradas da pesquisa.") }
@@ -127,6 +131,14 @@ struct Loc {
     var settingsUpdate: String { s("Actualización", "Update frequency", "Mise à jour", "Aktualisierung", "Atualização") }
     var settingsChargingSource: String { s("Carga eléctrica", "Electric charging", "Recharge électrique", "Elektro-Laden", "Carregamento") }
     var settingsPrivacy: String { s("Tu ubicación se usa solo en el dispositivo. No se comparte ni almacena.", "Your location is only used on-device. It is never shared or stored.", "Votre position est uniquement utilisée sur l'appareil.", "Ihr Standort wird nur auf dem Gerät verwendet.", "A sua localização é usada apenas no dispositivo.") }
+    var settingsAutomatic: String { s("Automático", "Automatic", "Automatique", "Automatisch", "Automático") }
+    var settingsAutoCountryFooter: String { s("Detecta el país automáticamente según tu ubicación.", "Automatically detects the country based on your location.", "Détecte le pays automatiquement selon votre position.", "Erkennt das Land automatisch anhand Ihres Standorts.", "Deteta o país automaticamente pela sua localização.") }
+    func settingsActiveAlerts(_ count: Int) -> String {
+        s("\(count) activas", "\(count) active", "\(count) actives", "\(count) aktiv", "\(count) ativas")
+    }
+    var settingsNoAlerts: String { s("Ninguna activa", "None active", "Aucune active", "Keine aktiv", "Nenhuma ativa") }
+    var settingsOfficialData: String { s("Datos oficiales", "Official data", "Données officielles", "Offizielle Daten", "Dados oficiais") }
+    var settingsChargingOn: String { s("Carga eléctrica", "EV charging", "Recharge élec.", "E-Ladestationen", "Carregamento") }
 
     // MARK: - Vehicle Edit
 
@@ -160,8 +172,27 @@ struct Loc {
         s("\(count) días", "\(count) days", "\(count) jours", "\(count) Tage", "\(count) dias")
     }
 
+    func detailTrendCaption(_ radiusKm: Double) -> String {
+        let radiusText = "\(Int(radiusKm.rounded())) km"
+        return s(
+            "Basada en tu zona actual y el radio de \(radiusText).",
+            "Based on your current area and the \(radiusText) radius.",
+            "Basée sur votre zone actuelle et le rayon de \(radiusText).",
+            "Basierend auf Ihrem aktuellen Gebiet und dem Radius von \(radiusText).",
+            "Baseada na sua zona atual e no raio de \(radiusText)."
+        )
+    }
+
     func detailSaving(_ amount: String) -> String {
         s("Ahorras \(amount) vs media", "You save \(amount) vs average", "Vous économisez \(amount)", "Sie sparen \(amount)", "Poupa \(amount) vs média")
+    }
+
+    func detailDeltaPerLiter(_ amount: String) -> String {
+        s("\(amount) por litro vs media", "\(amount) per litre vs average", "\(amount) par litre vs moyenne", "\(amount) pro Liter vs Durchschnitt", "\(amount) por litro vs média")
+    }
+
+    func detailStationCount(_ count: Int) -> String {
+        s("\(count) estaciones comparadas", "\(count) stations compared", "\(count) stations comparées", "\(count) verglichene Stationen", "\(count) postos comparados")
     }
 
     // MARK: - Charging Detail

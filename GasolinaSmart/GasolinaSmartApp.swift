@@ -29,6 +29,11 @@ struct GasolinaSmartApp: App {
 
         if url.host == "navigate" {
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            if let rawURL = components?.queryItems?.first(where: { $0.name == "url" })?.value,
+               let navURL = URL(string: rawURL) {
+                UIApplication.shared.open(navURL)
+                return
+            }
             if let latStr = components?.queryItems?.first(where: { $0.name == "lat" })?.value,
                let lonStr = components?.queryItems?.first(where: { $0.name == "lon" })?.value,
                let lat = Double(latStr), let lon = Double(lonStr) {
@@ -38,27 +43,12 @@ struct GasolinaSmartApp: App {
             return
         }
 
-        guard url.host == "station",
-              let rawId = url.pathComponents.dropFirst().first else {
-            return
-        }
+        guard let result = DeeplinkParser.parse(url) else { return }
 
-        let countryPrefixes = ["ES_", "GB_", "FR_", "DE_", "IT_"]
-        let stationId: String
-        if countryPrefixes.contains(where: { rawId.hasPrefix($0) }) {
-            stationId = rawId
-            if let prefix = rawId.split(separator: "_").first,
-               let country = Country(rawValue: String(prefix)),
-               country != preferences.selectedCountry {
-                preferences.selectedCountry = country
-                stationStore.switchCountry(country)
-            }
-        } else {
-            stationId = "ES_\(rawId)"
-            if preferences.selectedCountry != .spain {
-                preferences.selectedCountry = .spain
-                stationStore.switchCountry(.spain)
-            }
+        let stationId = result.stationId
+        if result.country != preferences.selectedCountry {
+            preferences.selectedCountry = result.country
+            stationStore.switchCountry(result.country)
         }
 
         appState.selectedTab = .map

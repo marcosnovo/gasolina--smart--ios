@@ -2,7 +2,9 @@ import Foundation
 
 struct DailyPriceRecord: Codable, Sendable {
     let dateString: String
+    let countryRaw: String
     let fuelTypeRaw: String
+    let radiusKm: Int
     let cheapestPrice: Double
     let averagePrice: Double
     let stationCount: Int
@@ -16,15 +18,27 @@ actor PriceHistoryStore {
 
     private init() {}
 
-    func record(fuelType: FuelType, cheapest: Decimal, average: Decimal, stationCount: Int) {
+    func record(
+        country: Country,
+        fuelType: FuelType,
+        radiusKm: Double,
+        cheapest: Decimal,
+        average: Decimal,
+        stationCount: Int
+    ) {
         loadIfNeeded()
         let dateString = Self.dateFormatter.string(from: Date())
-        let key = "\(dateString)-\(fuelType.rawValue)"
+        let roundedRadius = Int(radiusKm.rounded())
+        let key = "\(dateString)-\(country.rawValue)-\(fuelType.rawValue)-\(roundedRadius)"
 
-        if let idx = records.firstIndex(where: { "\($0.dateString)-\($0.fuelTypeRaw)" == key }) {
+        if let idx = records.firstIndex(where: {
+            "\($0.dateString)-\($0.countryRaw)-\($0.fuelTypeRaw)-\($0.radiusKm)" == key
+        }) {
             records[idx] = DailyPriceRecord(
                 dateString: dateString,
+                countryRaw: country.rawValue,
                 fuelTypeRaw: fuelType.rawValue,
+                radiusKm: roundedRadius,
                 cheapestPrice: NSDecimalNumber(decimal: cheapest).doubleValue,
                 averagePrice: NSDecimalNumber(decimal: average).doubleValue,
                 stationCount: stationCount
@@ -32,7 +46,9 @@ actor PriceHistoryStore {
         } else {
             records.append(DailyPriceRecord(
                 dateString: dateString,
+                countryRaw: country.rawValue,
                 fuelTypeRaw: fuelType.rawValue,
+                radiusKm: roundedRadius,
                 cheapestPrice: NSDecimalNumber(decimal: cheapest).doubleValue,
                 averagePrice: NSDecimalNumber(decimal: average).doubleValue,
                 stationCount: stationCount
@@ -43,12 +59,23 @@ actor PriceHistoryStore {
         save()
     }
 
-    func history(for fuelType: FuelType, days: Int = 14) -> [DailyPriceRecord] {
+    func history(
+        for fuelType: FuelType,
+        country: Country,
+        radiusKm: Double,
+        days: Int = 14
+    ) -> [DailyPriceRecord] {
         loadIfNeeded()
         guard let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) else { return [] }
         let cutoffString = Self.dateFormatter.string(from: cutoff)
+        let roundedRadius = Int(radiusKm.rounded())
         return records
-            .filter { $0.fuelTypeRaw == fuelType.rawValue && $0.dateString >= cutoffString }
+            .filter {
+                $0.fuelTypeRaw == fuelType.rawValue
+                    && $0.countryRaw == country.rawValue
+                    && $0.radiusKm == roundedRadius
+                    && $0.dateString >= cutoffString
+            }
             .sorted { $0.dateString < $1.dateString }
     }
 

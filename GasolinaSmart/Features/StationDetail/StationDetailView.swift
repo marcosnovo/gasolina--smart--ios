@@ -68,7 +68,11 @@ struct StationDetailView: View {
                 .padding(.bottom, 32)
             }
             .task {
-                priceHistory = await PriceHistoryStore.shared.history(for: preferences.selectedFuelType)
+                priceHistory = await PriceHistoryStore.shared.history(
+                    for: preferences.selectedFuelType,
+                    country: preferences.selectedCountry,
+                    radiusKm: preferences.preferredRadiusKm
+                )
             }
             .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
@@ -221,6 +225,10 @@ struct StationDetailView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color(.tertiaryLabel))
             }
+
+            Text(loc.detailTrendCaption(preferences.preferredRadiusKm))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color(.secondaryLabel))
 
             SparklineView(
                 values: priceHistory.map(\.averagePrice),

@@ -24,12 +24,29 @@ struct FuelStation: Identifiable, Codable, Equatable, Sendable {
     }
 
     func distance(from location: CLLocation) -> CLLocationDistance {
-        let stationLocation = CLLocation(latitude: latitude, longitude: longitude)
-        return location.distance(from: stationLocation)
+        GeoDistance.distance(
+            fromLatitude: location.coordinate.latitude,
+            fromLongitude: location.coordinate.longitude,
+            toLatitude: latitude,
+            toLongitude: longitude
+        )
     }
 
     func distanceKm(from location: CLLocation) -> Double {
         distance(from: location) / 1000.0
+    }
+
+    func distanceMeters(from coordinate: CLLocationCoordinate2D) -> Double {
+        GeoDistance.distance(
+            fromLatitude: coordinate.latitude,
+            fromLongitude: coordinate.longitude,
+            toLatitude: latitude,
+            toLongitude: longitude
+        )
+    }
+
+    func distanceKm(from coordinate: CLLocationCoordinate2D) -> Double {
+        distanceMeters(from: coordinate) / 1000.0
     }
 
     static func == (lhs: FuelStation, rhs: FuelStation) -> Bool {
@@ -103,5 +120,25 @@ struct FuelStation: Identifiable, Codable, Equatable, Sendable {
             rawPrices[key.rawValue] = "\(value)"
         }
         try container.encode(rawPrices, forKey: .prices)
+    }
+}
+
+enum GeoDistance {
+    static func distance(
+        fromLatitude: Double,
+        fromLongitude: Double,
+        toLatitude: Double,
+        toLongitude: Double
+    ) -> Double {
+        let earthRadius = 6_371_000.0
+        let lat1 = fromLatitude * .pi / 180
+        let lat2 = toLatitude * .pi / 180
+        let deltaLat = (toLatitude - fromLatitude) * .pi / 180
+        let deltaLon = (toLongitude - fromLongitude) * .pi / 180
+
+        let a = sin(deltaLat / 2) * sin(deltaLat / 2)
+            + cos(lat1) * cos(lat2) * sin(deltaLon / 2) * sin(deltaLon / 2)
+        let c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return earthRadius * c
     }
 }

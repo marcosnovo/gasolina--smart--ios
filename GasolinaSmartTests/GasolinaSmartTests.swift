@@ -98,6 +98,7 @@ struct FuelStationTests {
 
 // MARK: - StationStore Tests
 
+@MainActor
 struct StationStoreTests {
     @Test func estimatedSaving() {
         let store = StationStore()

@@ -6,7 +6,7 @@ enum WidgetConstants {
     static let urlScheme = "gasolinasmart"
 }
 
-struct WidgetStationData: Codable {
+struct WidgetStationData: Codable, Equatable {
     let stationId: String
     let stationName: String
     let brand: String
@@ -49,6 +49,13 @@ struct WidgetStationData: Codable {
 
     var vehicleColor: VehicleColor? {
         VehicleColor(rawValue: vehicleColorRaw)
+    }
+
+    var navigateDeepLinkURL: URL {
+        guard let encoded = navigationURLString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return deepLinkURL
+        }
+        return URL(string: "\(WidgetConstants.urlScheme)://navigate?url=\(encoded)") ?? deepLinkURL
     }
 
     static let placeholder = WidgetStationData(

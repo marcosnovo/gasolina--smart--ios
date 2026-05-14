@@ -150,6 +150,10 @@ struct MapLibreMapView: UIViewRepresentable {
                 guard let existing = annotationMap[station.id] else { continue }
                 let isCheapest = station.id == parent.cheapestId
                 let isFavorite = parent.favoriteIds.contains(station.id)
+                existing.station = station
+                if existing.coordinate.latitude != station.latitude || existing.coordinate.longitude != station.longitude {
+                    existing.coordinate = station.coordinate
+                }
                 let changed = existing.isCheapest != isCheapest || existing.isFavorite != isFavorite
                 existing.isCheapest = isCheapest
                 existing.isFavorite = isFavorite
@@ -391,7 +395,7 @@ class LightPinView: MLNAnnotationView {
         addSubview(imageView)
 
         layer.shouldRasterize = true
-        layer.rasterizationScale = UIScreen.main.scale
+        updateRasterizationScale()
     }
 
     @available(*, unavailable)
@@ -404,6 +408,11 @@ class LightPinView: MLNAnnotationView {
     override func prepareForReuse() {
         super.prepareForReuse()
         layer.zPosition = 0
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateRasterizationScale()
     }
 
     override func setSelected(_ selected: Bool, animated: Bool) {
@@ -469,6 +478,10 @@ class LightPinView: MLNAnnotationView {
                 icon.draw(in: iconRect)
             }
         }
+    }
+
+    private func updateRasterizationScale() {
+        layer.rasterizationScale = traitCollection.displayScale
     }
 }
 

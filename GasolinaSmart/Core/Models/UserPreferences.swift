@@ -96,6 +96,9 @@ final class UserPreferences {
     var appLanguage: AppLanguage {
         didSet { save() }
     }
+    var autoDetectCountry: Bool {
+        didSet { save() }
+    }
 
     var loc: Loc { Loc(appLanguage) }
     var resolvedLanguage: AppLanguage { appLanguage.resolved }
@@ -153,11 +156,12 @@ final class UserPreferences {
 
     static let availableRadii: [Double] = [2, 5, 10, 20, 30, 50]
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let vehiclesKey = "vehicles_v2"
     private let selectedVehicleIdKey = "selectedVehicleId_v2"
 
-    init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.defaults = userDefaults
         let loadedVehicles: [Vehicle]
         if let data = defaults.data(forKey: vehiclesKey),
            let decoded = try? JSONDecoder().decode([Vehicle].self, from: data),
@@ -209,6 +213,7 @@ final class UserPreferences {
         }
         let langRaw = defaults.string(forKey: "appLanguage") ?? AppLanguage.system.rawValue
         appLanguage = AppLanguage(rawValue: langRaw) ?? .system
+        autoDetectCountry = defaults.object(forKey: "autoDetectCountry") as? Bool ?? false
     }
 
     func addVehicle(_ vehicle: Vehicle) {
@@ -243,14 +248,15 @@ final class UserPreferences {
         favoriteAddresses.removeAll { $0.id == address.id }
     }
 
-    private var saveWork: DispatchWorkItem?
+    private var saveTask: Task<Void, Never>?
 
     private func save() {
-        saveWork?.cancel()
-        saveWork = DispatchWorkItem { [weak self] in
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
             self?.persistToDisk()
         }
-        DispatchQueue.main.async(execute: saveWork!)
     }
 
     private func persistToDisk() {
@@ -269,6 +275,7 @@ final class UserPreferences {
         defaults.set(showChargingStations, forKey: "showChargingStations")
         defaults.set(selectedCountry.rawValue, forKey: "selectedCountry")
         defaults.set(appLanguage.rawValue, forKey: "appLanguage")
+        defaults.set(autoDetectCountry, forKey: "autoDetectCountry")
         let shared = UserDefaults(suiteName: "group.MarcosNovo.GasolinaSmart")
         shared?.set(appLanguage.rawValue, forKey: "appLanguage")
         shared?.set(selectedCountry.rawValue, forKey: "selectedCountry")

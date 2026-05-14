@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreLocation
+import MapKit
 
 struct SearchView: View {
     @Environment(StationStore.self) private var store
@@ -17,7 +18,7 @@ struct SearchView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var sortByPrice = true
     @State private var didConsumePendingQuery = false
-
+    @State private var geocodingRequest: MKGeocodingRequest?
     var body: some View {
         NavigationStack {
             Group {
@@ -58,6 +59,7 @@ struct SearchView: View {
                 searchTask?.cancel()
                 let trimmed = newValue.trimmingCharacters(in: .whitespaces)
                 guard trimmed.count >= 3 else {
+                    geocodingRequest?.cancel()
                     results = []
                     geocodedLocation = nil
                     geocodedName = nil
@@ -181,18 +183,21 @@ struct SearchView: View {
     @MainActor
     private func performSearch(_ query: String) async {
         isGeocoding = true
+        geocodingRequest?.cancel()
 
-        let geocoder = CLGeocoder()
         do {
-            let placemarks = try await geocoder.geocodeAddressString(query)
+            let mapItems = try await resolveMapItems(for: query)
             guard !Task.isCancelled else { return }
 
-            if let placemark = placemarks.first, let location = placemark.location {
+            if let mapItem = mapItems.first, let location = mapItem.placemark.location {
                 geocodedLocation = location
-                geocodedName = placemark.locality ?? placemark.name ?? query
+                geocodedName = mapItem.placemark.locality ?? mapItem.name ?? query
 
                 let fuelType = preferences.selectedFuelType
-                let withPrice = store.allStations.filter { $0.price(for: fuelType) != nil }
+                let nearbyCountry = Country.detect(from: location.coordinate) ?? preferences.selectedCountry
+                let stations = try await stationsForResolvedLocation(location, country: nearbyCountry)
+
+                let withPrice = stations.filter { $0.price(for: fuelType) != nil }
                 let withDistance: [(FuelStation, Double)] = withPrice.map { ($0, $0.distanceKm(from: location)) }
                 let nearbyPairs = withDistance.filter { $0.1 <= 20 }.sorted { $0.1 < $1.1 }
                 let closest = Array(nearbyPairs.prefix(30))
@@ -214,6 +219,128 @@ struct SearchView: View {
         }
 
         isGeocoding = false
+    }
+
+    private func resolveMapItems(for query: String) async throws -> [MKMapItem] {
+        let region = countryRegion(for: preferences.selectedCountry)
+        let localizedQuery = "\(query), \(preferences.selectedCountry.displayName)"
+
+        for candidate in [query, localizedQuery] {
+            let regionalItems = try await searchMapItems(for: candidate, region: region)
+            if !regionalItems.isEmpty {
+                return regionalItems
+            }
+        }
+
+        let unrestrictedItems = try await searchMapItems(for: query, region: nil)
+        if !unrestrictedItems.isEmpty {
+            return unrestrictedItems
+        }
+
+        for candidate in [query, localizedQuery] {
+            guard let geocodingRequest = MKGeocodingRequest(addressString: candidate) else { continue }
+            self.geocodingRequest = geocodingRequest
+            let geocodedItems = try await geocodedMapItems(for: geocodingRequest)
+            let rankedItems = rankedMapItems(from: geocodedItems, query: query)
+            if !rankedItems.isEmpty {
+                return rankedItems
+            }
+        }
+
+        return []
+    }
+
+    private func geocodedMapItems(for request: MKGeocodingRequest) async throws -> [MKMapItem] {
+        try await withCheckedThrowingContinuation { continuation in
+            request.getMapItems { items, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: items ?? [])
+                }
+            }
+        }
+    }
+
+    private func countryRegion(for country: Country) -> MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: country.mapCenter,
+            span: MKCoordinateSpan(latitudeDelta: 22, longitudeDelta: 22)
+        )
+    }
+
+    private func searchMapItems(
+        for query: String,
+        region: MKCoordinateRegion?
+    ) async throws -> [MKMapItem] {
+        let request: MKLocalSearch.Request
+        if let region {
+            request = MKLocalSearch.Request(naturalLanguageQuery: query, region: region)
+            request.regionPriority = .default
+        } else {
+            request = MKLocalSearch.Request(naturalLanguageQuery: query)
+        }
+        request.resultTypes = [.address, .pointOfInterest, .physicalFeature]
+
+        let response = try await MKLocalSearch(request: request).start()
+        return rankedMapItems(from: response.mapItems, query: query)
+    }
+
+    private func stationsForResolvedLocation(_ location: CLLocation, country: Country) async throws -> [FuelStation] {
+        guard let source = await MainActor.run(body: { FuelDataSourceRegistry.shared.source(for: country) }) else {
+            return []
+        }
+
+        return try await source.fetchStations(
+            latitude: location.coordinate.latitude,
+            longitude: location.coordinate.longitude,
+            radiusKm: max(preferences.preferredRadiusKm + 20, 40)
+        )
+    }
+
+    private func rankedMapItems(from items: [MKMapItem], query: String) -> [MKMapItem] {
+        let normalizedQuery = normalized(query)
+
+        return items
+            .filter { $0.placemark.location != nil }
+            .sorted { lhs, rhs in
+                let leftScore = mapItemScore(lhs, query: normalizedQuery)
+                let rightScore = mapItemScore(rhs, query: normalizedQuery)
+                if leftScore != rightScore {
+                    return leftScore > rightScore
+                }
+                return (lhs.name ?? "") < (rhs.name ?? "")
+            }
+    }
+
+    private func mapItemScore(_ item: MKMapItem, query: String) -> Int {
+        let placemark = item.placemark
+        let fields = [
+            placemark.locality,
+            placemark.subLocality,
+            placemark.administrativeArea,
+            placemark.title,
+            item.name
+        ]
+        .compactMap { $0?.lowercased() }
+
+        var score = 0
+        for field in fields {
+            if field == query {
+                score += 40
+            } else if field.contains(query) {
+                score += 20
+            }
+        }
+        if placemark.locality != nil { score += 10 }
+        return score
+    }
+
+    private func normalized(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
     }
 
     private static let stripChars = CharacterSet.alphanumerics.inverted

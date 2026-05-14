@@ -5,7 +5,7 @@ actor StationCache {
 
     private var memoryCache: [String: CachedData] = [:]
 
-    private init() {}
+    init() {}
 
     struct CachedData: Codable, Sendable {
         let stations: [FuelStation]

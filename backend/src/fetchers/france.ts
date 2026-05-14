@@ -5,7 +5,7 @@ import { saveStations, getCountryMetaValue } from "../database";
 const API_URL =
   "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/exports/json";
 
-interface FranceRecord {
+export interface FranceRecord {
   id: number;
   adresse?: string;
   ville?: string;
@@ -26,7 +26,7 @@ interface FranceRecord {
   gplc_maj?: string | null;
 }
 
-const FUEL_FIELDS: Array<{
+export const FUEL_FIELDS: Array<{
   priceKey: keyof FranceRecord;
   majKey: keyof FranceRecord;
   fuelType: string;
@@ -39,38 +39,8 @@ const FUEL_FIELDS: Array<{
   { priceKey: "gplc_prix", majKey: "gplc_maj", fuelType: "glp" },
 ];
 
-export async function fetchFrance(): Promise<{ count: number; duration: number }> {
-  const start = Date.now();
-  console.log("[fetcher:FR] Starting fetch from French government API (full export)...");
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
-
-  let response: Response;
-  try {
-    response = await fetch(API_URL, {
-      headers: {
-        "User-Agent": "GasolinaSmart-Backend/1.0",
-        Accept: "application/json",
-      },
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!response.ok) {
-    throw new Error(`France API returned ${response.status}`);
-  }
-
-  const records = (await response.json()) as FranceRecord[];
-  console.log(`[fetcher:FR] Received ${records.length} records from export`);
-
-  let skippedNoGeo = 0;
-  let skippedNoPrices = 0;
-  let skippedOutOfBounds = 0;
-
-  const stations: Array<{
+export interface ParsedFranceResult {
+  stations: Array<{
     id: string;
     name: string;
     brand: string;
@@ -81,7 +51,18 @@ export async function fetchFrance(): Promise<{ count: number; duration: number }
     longitude: number;
     prices: Record<string, number>;
     updatedAt: string;
-  }> = [];
+  }>;
+  skippedNoGeo: number;
+  skippedNoPrices: number;
+  skippedOutOfBounds: number;
+}
+
+export function parseFranceRecords(records: FranceRecord[]): ParsedFranceResult {
+  let skippedNoGeo = 0;
+  let skippedNoPrices = 0;
+  let skippedOutOfBounds = 0;
+
+  const stations: ParsedFranceResult["stations"] = [];
 
   for (const rec of records) {
     if (!rec.geom || rec.geom.lat == null || rec.geom.lon == null || isNaN(rec.geom.lat) || isNaN(rec.geom.lon)) {
@@ -130,18 +111,50 @@ export async function fetchFrance(): Promise<{ count: number; duration: number }
     });
   }
 
+  return { stations, skippedNoGeo, skippedNoPrices, skippedOutOfBounds };
+}
+
+export async function fetchFrance(): Promise<{ count: number; duration: number }> {
+  const start = Date.now();
+  console.log("[fetcher:FR] Starting fetch from French government API (full export)...");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+
+  let response: Response;
+  try {
+    response = await fetch(API_URL, {
+      headers: {
+        "User-Agent": "GasolinaSmart-Backend/1.0",
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    throw new Error(`France API returned ${response.status}`);
+  }
+
+  const records = (await response.json()) as FranceRecord[];
+  console.log(`[fetcher:FR] Received ${records.length} records from export`);
+
+  const result = parseFranceRecords(records);
+
   console.log(
-    `[fetcher:FR] Parsed: ${stations.length} valid, skipped: ${skippedNoGeo} no-geo, ${skippedNoPrices} no-prices, ${skippedOutOfBounds} out-of-bounds`
+    `[fetcher:FR] Parsed: ${result.stations.length} valid, skipped: ${result.skippedNoGeo} no-geo, ${result.skippedNoPrices} no-prices, ${result.skippedOutOfBounds} out-of-bounds`
   );
 
-  if (stations.length > 0) {
-    saveStations("FR", stations);
+  if (result.stations.length > 0) {
+    saveStations("FR", result.stations);
   }
 
   const duration = Date.now() - start;
-  console.log(`[fetcher:FR] Saved ${stations.length} stations in ${duration}ms`);
+  console.log(`[fetcher:FR] Saved ${result.stations.length} stations in ${duration}ms`);
 
-  return { count: stations.length, duration };
+  return { count: result.stations.length, duration };
 }
 
 export function shouldFetchFrance(intervalMinutes: number): boolean {

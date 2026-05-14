@@ -15,6 +15,12 @@ final class StationStore {
     private var loadedRadiusKm: Double = 0
     private var loadGeneration = 0
 
+    struct NearbyFuelSummary {
+        let visibleStations: [FuelStation]
+        let cheapestStation: FuelStation?
+        let averagePrice: Decimal?
+    }
+
     func loadCacheImmediately() async {
         guard allStations.isEmpty else { return }
         if let cached = await StationCache.shared.getStale(country: activeCountry) {
@@ -103,18 +109,7 @@ final class StationStore {
         fuelType: FuelType,
         limit: Int? = nil
     ) -> [FuelStation] {
-        let radiusM = radiusKm * 1000
-        var result = allStations
-            .compactMap { s -> (FuelStation, Double)? in
-                guard s.price(for: fuelType) != nil else { return nil }
-                let d = location.distance(from: CLLocation(latitude: s.latitude, longitude: s.longitude))
-                guard d <= radiusM else { return nil }
-                return (s, d)
-            }
-            .sorted { $0.1 < $1.1 }
-            .map(\.0)
-        if let limit { result = Array(result.prefix(limit)) }
-        return result
+        nearbySummary(location: location, radiusKm: radiusKm, fuelType: fuelType, limit: limit).visibleStations
     }
 
     func cheapestStation(
@@ -122,13 +117,7 @@ final class StationStore {
         radiusKm: Double,
         fuelType: FuelType
     ) -> FuelStation? {
-        let radiusM = radiusKm * 1000
-        return allStations
-            .filter {
-                $0.price(for: fuelType) != nil &&
-                location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= radiusM
-            }
-            .min { ($0.price(for: fuelType) ?? .greatestFiniteMagnitude) < ($1.price(for: fuelType) ?? .greatestFiniteMagnitude) }
+        nearbySummary(location: location, radiusKm: radiusKm, fuelType: fuelType).cheapestStation
     }
 
     func averagePrice(
@@ -136,15 +125,47 @@ final class StationStore {
         radiusKm: Double,
         fuelType: FuelType
     ) -> Decimal? {
+        nearbySummary(location: location, radiusKm: radiusKm, fuelType: fuelType).averagePrice ?? cachedAveragePrice
+    }
+
+    func nearbySummary(
+        location: CLLocation,
+        radiusKm: Double,
+        fuelType: FuelType,
+        limit: Int? = nil
+    ) -> NearbyFuelSummary {
         let radiusM = radiusKm * 1000
-        let prices = allStations
-            .filter {
-                $0.price(for: fuelType) != nil &&
-                location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= radiusM
-            }
-            .compactMap { $0.price(for: fuelType) }
-        guard !prices.isEmpty else { return cachedAveragePrice }
-        return prices.reduce(Decimal.zero, +) / Decimal(prices.count)
+        let origin = location.coordinate
+
+        var matches: [(station: FuelStation, distance: Double, price: Decimal)] = []
+        matches.reserveCapacity(allStations.count)
+
+        for station in allStations {
+            guard let price = station.price(for: fuelType) else { continue }
+            let distance = station.distanceMeters(from: origin)
+            guard distance <= radiusM else { continue }
+            matches.append((station, distance, price))
+        }
+
+        matches.sort { $0.distance < $1.distance }
+        if let limit, matches.count > limit {
+            matches = Array(matches.prefix(limit))
+        }
+
+        let visibleStations = matches.map(\.station)
+        let cheapestStation = matches.min { $0.price < $1.price }?.station
+        let averagePrice: Decimal?
+        if matches.isEmpty {
+            averagePrice = cachedAveragePrice
+        } else {
+            averagePrice = matches.map(\.price).reduce(Decimal.zero, +) / Decimal(matches.count)
+        }
+
+        return NearbyFuelSummary(
+            visibleStations: visibleStations,
+            cheapestStation: cheapestStation,
+            averagePrice: averagePrice
+        )
     }
 
     func estimatedSaving(

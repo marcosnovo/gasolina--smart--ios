@@ -3,7 +3,7 @@ import { saveStations, getCountryMetaValue } from "../database";
 const ANAGRAFICA_URL = "https://www.mimit.gov.it/images/exportCSV/anagrafica_impianti_attivi.csv";
 const PREZZI_URL = "https://www.mimit.gov.it/images/exportCSV/prezzo_alle_8.csv";
 
-const FUEL_MAP: Record<string, string> = {
+export const FUEL_MAP: Record<string, string> = {
   "Benzina": "e5",
   "Benzina Plus": "gasolina98",
   "Benzina speciale": "gasolina98",
@@ -25,7 +25,7 @@ const FUEL_MAP: Record<string, string> = {
   "GNL": "gnc",
 };
 
-interface StationData {
+export interface StationData {
   id: string;
   name: string;
   brand: string;
@@ -38,19 +38,19 @@ interface StationData {
   latestUpdate: string;
 }
 
-function detectSeparator(line: string): string {
+export function detectSeparator(line: string): string {
   const pipes = (line.match(/\|/g) || []).length;
   const semis = (line.match(/;/g) || []).length;
   return pipes >= semis ? "|" : ";";
 }
 
-function normalizeBrand(raw: string): string {
+export function normalizeBrand(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return "";
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
-function parseItalianDate(dtComu: string): Date | null {
+export function parseItalianDate(dtComu: string): Date | null {
   // Format: DD/MM/YYYY HH:MM:SS
   const m = dtComu.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
   if (!m) return null;
@@ -83,35 +83,28 @@ async function fetchCSV(url: string): Promise<string> {
   return decoder.decode(buffer);
 }
 
-export async function fetchItaly(): Promise<{ count: number; duration: number }> {
-  const start = Date.now();
-  console.log("[fetcher:IT] Starting fetch from MIMIT (anagrafica + prezzi)...");
+export interface ParsedAnagrafica {
+  stationMap: Map<string, StationData>;
+  skippedNoCoords: number;
+  skippedOutOfBounds: number;
+}
 
-  const [anagraficaText, prezziText] = await Promise.all([
-    fetchCSV(ANAGRAFICA_URL),
-    fetchCSV(PREZZI_URL),
-  ]);
-
-  // --- Parse anagrafica ---
-  const anagLines = anagraficaText.split("\n");
-  // Line 0: "Estrazione del YYYY-MM-DD" — skip
-  // Line 1: header
-  if (anagLines.length < 3) {
+export function parseAnagraficaText(text: string): ParsedAnagrafica {
+  const lines = text.split("\n");
+  if (lines.length < 3) {
     throw new Error("Anagrafica CSV too short");
   }
 
-  const anagSep = detectSeparator(anagLines[2]);
-  console.log(`[fetcher:IT] Anagrafica separator: '${anagSep}', ${anagLines.length} lines`);
-
+  const sep = detectSeparator(lines[2]);
   const stationMap = new Map<string, StationData>();
-  let anagSkippedNoCoords = 0;
-  let anagSkippedOutOfBounds = 0;
+  let skippedNoCoords = 0;
+  let skippedOutOfBounds = 0;
 
-  for (let i = 2; i < anagLines.length; i++) {
-    const line = anagLines[i].trim();
+  for (let i = 2; i < lines.length; i++) {
+    const line = lines[i].trim();
     if (!line) continue;
 
-    const cols = line.split(anagSep);
+    const cols = line.split(sep);
     if (cols.length < 10) continue;
 
     const id = cols[0].trim();
@@ -119,7 +112,7 @@ export async function fetchItaly(): Promise<{ count: number; duration: number }>
     const lonStr = cols[9].trim();
 
     if (!latStr || !lonStr) {
-      anagSkippedNoCoords++;
+      skippedNoCoords++;
       continue;
     }
 
@@ -127,12 +120,12 @@ export async function fetchItaly(): Promise<{ count: number; duration: number }>
     const lon = parseFloat(lonStr);
 
     if (isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0) {
-      anagSkippedNoCoords++;
+      skippedNoCoords++;
       continue;
     }
 
     if (lat < 35.5 || lat > 47.1 || lon < 6.6 || lon > 18.5) {
-      anagSkippedOutOfBounds++;
+      skippedOutOfBounds++;
       continue;
     }
 
@@ -150,32 +143,42 @@ export async function fetchItaly(): Promise<{ count: number; duration: number }>
     });
   }
 
-  console.log(
-    `[fetcher:IT] Anagrafica: ${stationMap.size} stations, skipped: ${anagSkippedNoCoords} no-coords, ${anagSkippedOutOfBounds} out-of-bounds`
-  );
+  return { stationMap, skippedNoCoords, skippedOutOfBounds };
+}
 
-  // --- Parse prezzi ---
-  const prezziLines = prezziText.split("\n");
-  if (prezziLines.length < 3) {
+export interface ParsedPrezzi {
+  pricesMatched: number;
+  pricesUnmapped: number;
+  pricesStale: number;
+  pricesInvalid: number;
+  pricesOrphan: number;
+  unmappedFuels: Map<string, number>;
+}
+
+export function parsePrezziText(
+  text: string,
+  stationMap: Map<string, StationData>,
+  now: number = Date.now()
+): ParsedPrezzi {
+  const lines = text.split("\n");
+  if (lines.length < 3) {
     throw new Error("Prezzi CSV too short");
   }
 
-  const prezziSep = detectSeparator(prezziLines[2]);
-  console.log(`[fetcher:IT] Prezzi separator: '${prezziSep}', ${prezziLines.length} lines`);
-
+  const sep = detectSeparator(lines[2]);
   let pricesMatched = 0;
   let pricesUnmapped = 0;
   let pricesStale = 0;
   let pricesInvalid = 0;
   let pricesOrphan = 0;
   const unmappedFuels = new Map<string, number>();
-  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
-  for (let i = 2; i < prezziLines.length; i++) {
-    const line = prezziLines[i].trim();
+  for (let i = 2; i < lines.length; i++) {
+    const line = lines[i].trim();
     if (!line) continue;
 
-    const cols = line.split(prezziSep);
+    const cols = line.split(sep);
     if (cols.length < 5) continue;
 
     const stationId = cols[0].trim();
@@ -208,7 +211,6 @@ export async function fetchItaly(): Promise<{ count: number; duration: number }>
       continue;
     }
 
-    // Prefer self-service (cheaper) over full-service
     const existingPrice = station.prices[mapped];
     if (existingPrice == null || (isSelf && prezzo < existingPrice)) {
       station.prices[mapped] = Math.round(prezzo * 1000) / 1000;
@@ -222,30 +224,29 @@ export async function fetchItaly(): Promise<{ count: number; duration: number }>
     pricesMatched++;
   }
 
-  const topUnmapped = [...unmappedFuels.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([name, count]) => `"${name}":${count}`);
+  return { pricesMatched, pricesUnmapped, pricesStale, pricesInvalid, pricesOrphan, unmappedFuels };
+}
 
-  console.log(
-    `[fetcher:IT] Prezzi: ${pricesMatched} matched, ${pricesUnmapped} unmapped (${topUnmapped.join(", ")}), ${pricesStale} stale, ${pricesInvalid} invalid, ${pricesOrphan} orphan`
-  );
+export interface StationOutput {
+  id: string;
+  name: string;
+  brand: string;
+  address: string;
+  municipality: string;
+  province: string;
+  latitude: number;
+  longitude: number;
+  prices: Record<string, number>;
+  updatedAt: string;
+}
 
-  // --- Build final station list (only those with prices) ---
-  const stations: Array<{
-    id: string;
-    name: string;
-    brand: string;
-    address: string;
-    municipality: string;
-    province: string;
-    latitude: number;
-    longitude: number;
-    prices: Record<string, number>;
-    updatedAt: string;
-  }> = [];
-
+export function buildStationList(stationMap: Map<string, StationData>): {
+  stations: StationOutput[];
+  stationsWithoutPrices: number;
+} {
+  const stations: StationOutput[] = [];
   let stationsWithoutPrices = 0;
+
   for (const entry of stationMap.values()) {
     if (Object.keys(entry.prices).length === 0) {
       stationsWithoutPrices++;
@@ -264,6 +265,36 @@ export async function fetchItaly(): Promise<{ count: number; duration: number }>
       updatedAt: entry.latestUpdate || new Date().toISOString(),
     });
   }
+
+  return { stations, stationsWithoutPrices };
+}
+
+export async function fetchItaly(): Promise<{ count: number; duration: number }> {
+  const start = Date.now();
+  console.log("[fetcher:IT] Starting fetch from MIMIT (anagrafica + prezzi)...");
+
+  const [anagraficaText, prezziText] = await Promise.all([
+    fetchCSV(ANAGRAFICA_URL),
+    fetchCSV(PREZZI_URL),
+  ]);
+
+  const { stationMap, skippedNoCoords, skippedOutOfBounds } = parseAnagraficaText(anagraficaText);
+  console.log(
+    `[fetcher:IT] Anagrafica: ${stationMap.size} stations, skipped: ${skippedNoCoords} no-coords, ${skippedOutOfBounds} out-of-bounds`
+  );
+
+  const prezziStats = parsePrezziText(prezziText, stationMap);
+
+  const topUnmapped = [...prezziStats.unmappedFuels.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name, count]) => `"${name}":${count}`);
+
+  console.log(
+    `[fetcher:IT] Prezzi: ${prezziStats.pricesMatched} matched, ${prezziStats.pricesUnmapped} unmapped (${topUnmapped.join(", ")}), ${prezziStats.pricesStale} stale, ${prezziStats.pricesInvalid} invalid, ${prezziStats.pricesOrphan} orphan`
+  );
+
+  const { stations, stationsWithoutPrices } = buildStationList(stationMap);
 
   console.log(
     `[fetcher:IT] Final: ${stations.length} stations with prices, ${stationsWithoutPrices} without prices`

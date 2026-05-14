@@ -9,11 +9,11 @@ enum VehicleType: String, Codable, CaseIterable, Hashable {
 
     var icon: String {
         switch self {
-        case .sedan: "car.fill"
+        case .sedan: "car.side.fill"
         case .suv: "car.rear.fill"
         case .hatchback: "car.fill"
         case .van: "box.truck.fill"
-        case .motorcycle: "bicycle"
+        case .motorcycle: "motorcycle.fill"
         }
     }
 

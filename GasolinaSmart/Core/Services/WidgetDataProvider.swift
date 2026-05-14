@@ -26,13 +26,6 @@ enum WidgetDataProvider {
         let priceDouble = NSDecimalNumber(decimal: price).doubleValue
         let distance = cheapestStation.distanceKm(from: userLocation)
 
-        if let existing = read(),
-           existing.stationId == cheapestStation.id,
-           existing.price == priceDouble,
-           abs(existing.distanceKm - distance) < 0.1 {
-            return
-        }
-
         var savingText: String?
         var opportunityKey = "unknown"
 
@@ -80,9 +73,10 @@ enum WidgetDataProvider {
             fuelTypeUnit: fuelType.unit(for: country)
         )
 
+        if read() == data { return }
+
         if let encoded = try? JSONEncoder().encode(data) {
             defaults.set(encoded, forKey: WidgetConstants.widgetDataKey)
-            defaults.synchronize()
         }
 
         WidgetCenter.shared.reloadAllTimelines()

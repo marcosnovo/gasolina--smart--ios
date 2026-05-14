@@ -10,8 +10,12 @@ final class ChargingStationStore {
     private var lastFetchLocation: CLLocation?
     private var lastFetchRadius: Double = 0
     private var lastFetchTime: Date?
+    private var loadGeneration = 0
 
     func loadStations(near location: CLLocation, radiusKm: Double) async {
+        loadGeneration += 1
+        let generation = loadGeneration
+
         if let lastTime = lastFetchTime,
            Date().timeIntervalSince(lastTime) < 5 * 60,
            let lastLoc = lastFetchLocation,
@@ -29,25 +33,30 @@ final class ChargingStationStore {
                 longitude: location.coordinate.longitude,
                 radiusKm: radiusKm + 5
             )
+            guard generation == loadGeneration else { return }
             stations = result
             lastFetchLocation = location
             lastFetchRadius = radiusKm + 5
             lastFetchTime = Date()
         } catch {
+            guard generation == loadGeneration else { return }
             if stations.isEmpty {
                 self.error = error.localizedDescription
             }
         }
 
-        isLoading = false
+        if generation == loadGeneration {
+            isLoading = false
+        }
     }
 
     func nearbyStations(location: CLLocation, radiusKm: Double, limit: Int = 100) -> [ChargingStation] {
         let radiusM = radiusKm * 1000
+        let origin = location.coordinate
         let sorted = stations
             .compactMap { s -> (ChargingStation, Double)? in
                 guard s.isOperational else { return nil }
-                let d = location.distance(from: CLLocation(latitude: s.latitude, longitude: s.longitude))
+                let d = s.distanceKm(from: origin) * 1000
                 guard d <= radiusM else { return nil }
                 return (s, d)
             }

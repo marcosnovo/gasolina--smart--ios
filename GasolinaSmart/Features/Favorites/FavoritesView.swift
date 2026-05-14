@@ -11,6 +11,7 @@ struct FavoritesView: View {
 
     @State private var showNavigationPicker = false
     @State private var navigationTarget: FuelStation?
+    @State private var selectedSection: FavoritesSection = .all
 
     private var favoriteStations: [FuelStation] {
         store.allStations.filter { preferences.isFavorite($0.id) }
@@ -18,6 +19,20 @@ struct FavoritesView: View {
 
     private var isEmpty: Bool {
         favoriteStations.isEmpty && preferences.favoriteAddresses.isEmpty
+    }
+
+    private var visibleAddresses: [FavoriteAddress] {
+        switch selectedSection {
+        case .all, .addresses: preferences.favoriteAddresses
+        case .stations: []
+        }
+    }
+
+    private var visibleStations: [FuelStation] {
+        switch selectedSection {
+        case .all, .stations: favoriteStations
+        case .addresses: []
+        }
     }
 
     var body: some View {
@@ -28,9 +43,11 @@ struct FavoritesView: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            if !preferences.favoriteAddresses.isEmpty {
+                            sectionPicker
+
+                            if !visibleAddresses.isEmpty {
                                 sectionHeader(loc.favAddresses)
-                                ForEach(preferences.favoriteAddresses) { address in
+                                ForEach(visibleAddresses) { address in
                                     AddressFavoriteCard(
                                         address: address,
                                         onNavigate: { station in navigateTo(station) },
@@ -45,9 +62,9 @@ struct FavoritesView: View {
                                 }
                             }
 
-                            if !favoriteStations.isEmpty {
+                            if !visibleStations.isEmpty {
                                 sectionHeader(loc.favStations)
-                                ForEach(favoriteStations) { station in
+                                ForEach(visibleStations) { station in
                                     StationFavoriteCard(
                                         station: station,
                                         onTap: {
@@ -60,6 +77,10 @@ struct FavoritesView: View {
                                         }
                                     )
                                 }
+                            }
+
+                            if visibleAddresses.isEmpty && visibleStations.isEmpty {
+                                emptySelectionState
                             }
                         }
                         .padding(.horizontal, 16)
@@ -100,6 +121,16 @@ struct FavoritesView: View {
             .padding(.top, 8)
     }
 
+    private var sectionPicker: some View {
+        Picker(loc.favTitle, selection: $selectedSection) {
+            ForEach(FavoritesSection.allCases, id: \.self) { section in
+                Text(section.title(loc: loc)).tag(section)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.bottom, 4)
+    }
+
     private func navigateTo(_ station: FuelStation) {
         if preferences.enabledNavigationApps.count == 1,
            let app = preferences.enabledNavigationApps.first {
@@ -124,6 +155,34 @@ struct FavoritesView: View {
         }
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var emptySelectionState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(loc.favEmpty)
+                .font(.title3.weight(.semibold))
+            Text(loc.favEmptyBody)
+                .font(.subheadline)
+                .foregroundStyle(Color(.secondaryLabel))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private enum FavoritesSection: CaseIterable {
+    case all
+    case stations
+    case addresses
+
+    func title(loc: Loc) -> String {
+        switch self {
+        case .all: loc.favAll
+        case .stations: loc.favStations
+        case .addresses: loc.favAddresses
+        }
     }
 }
 

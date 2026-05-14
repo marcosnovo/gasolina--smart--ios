@@ -10,8 +10,10 @@ struct MapView: View {
 
     private var loc: Loc { preferences.loc }
 
-    @State private var showFuelPicker = false
     @State private var showRadiusPicker = false
+    @State private var showVehicleMenu = false
+    @State private var showAddVehicle = false
+    @State private var editingVehicle: Vehicle?
 
     @State private var visibleStations: [FuelStation] = []
     @State private var visibleChargingStations: [ChargingStation] = []
@@ -99,6 +101,11 @@ struct MapView: View {
             updateVisibleStations()
             markReadyIfNeeded()
             if let newLocation {
+                if preferences.autoDetectCountry,
+                   let detected = Country.detect(from: newLocation.coordinate),
+                   detected != preferences.selectedCountry {
+                    preferences.selectedCountry = detected
+                }
                 Task {
                     await store.loadStations(
                         near: newLocation,
@@ -175,15 +182,25 @@ struct MapView: View {
                     .presentationDragIndicator(.visible)
             }
         }
-        .sheet(isPresented: $showFuelPicker) {
-            FuelTypePickerSheet()
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-        }
         .sheet(isPresented: $showRadiusPicker) {
             RadiusPickerSheet()
                 .presentationDetents([.height(280)])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showAddVehicle) {
+            VehicleEditSheet(
+                onSave: { vehicle in
+                    preferences.addVehicle(vehicle)
+                }
+            )
+        }
+        .sheet(item: $editingVehicle) { vehicle in
+            VehicleEditSheet(
+                vehicle: vehicle,
+                onSave: { updated in
+                    preferences.selectedVehicle = updated
+                }
+            )
         }
         .sheet(isPresented: $showNavigationPicker) {
             if let cheapest = cachedCheapest {
@@ -200,47 +217,87 @@ struct MapView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showVehicleMenu) {
+            VehicleSwitcherSheet(
+                onSelectVehicle: { vehicle in
+                    preferences.selectedVehicleId = vehicle.id
+                    showVehicleMenu = false
+                },
+                onEditVehicle: {
+                    editingVehicle = preferences.selectedVehicle
+                    showVehicleMenu = false
+                },
+                onAddVehicle: {
+                    showAddVehicle = true
+                    showVehicleMenu = false
+                }
+            )
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: - Top Bar
 
     private var topBar: some View {
         HStack(spacing: 10) {
-            Button { showFuelPicker = true } label: {
+            Button { showVehicleMenu = true } label: {
                 HStack(spacing: 8) {
-                    VehicleAvatar(vehicle: preferences.selectedVehicle, size: 30)
-                    VStack(alignment: .leading, spacing: 1) {
+                    VehicleAvatar(vehicle: preferences.selectedVehicle, size: 28)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(preferences.selectedVehicle.name)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .lineLimit(1)
-                        Text(preferences.selectedFuelType.shortLabel)
-                            .font(.system(size: 10, weight: .medium))
+                            .truncationMode(.tail)
+                            .foregroundStyle(Color(.label))
+                        Text(preferences.selectedFuelType.shortLabel(for: preferences.selectedCountry))
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Color(.secondaryLabel))
+                            .lineLimit(1)
                     }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .fixedSize()
                 }
-                .padding(.trailing, 12)
-                .padding(.leading, 5)
-                .padding(.vertical, 5)
-                .background(.regularMaterial)
+                .padding(.trailing, 14)
+                .padding(.leading, 10)
+                .padding(.vertical, 8)
+                .background(topBarCapsuleBackground)
+                .overlay(topBarOutline)
                 .clipShape(Capsule())
+                .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
             }
             .buttonStyle(.plain)
+            .layoutPriority(1)
+
+            Spacer(minLength: 12)
 
             Button { showRadiusPicker = true } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "scope")
                         .font(.system(size: 13, weight: .medium))
-                    Text("\(Int(preferences.preferredRadiusKm)) km")
-                        .font(Theme.Fonts.pillLabel)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(loc.mapRadius.uppercased())
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color(.secondaryLabel))
+                        Text("\(Int(preferences.preferredRadiusKm)) km")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(.label))
+                    }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(.secondaryLabel))
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(.regularMaterial)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(topBarCapsuleBackground)
+                .overlay(topBarOutline)
                 .clipShape(Capsule())
+                .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
             }
             .buttonStyle(.plain)
-
-            Spacer()
+            .frame(width: 126, alignment: .leading)
 
             Button {
                 centerOnUserCounter += 1
@@ -250,12 +307,27 @@ struct MapView: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(Theme.Colors.accent)
                     .frame(width: 44, height: 44)
-                    .background(.regularMaterial)
+                    .background(topBarCircleBackground)
+                    .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 1))
                     .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, Theme.Spacing.md)
+    }
+
+    private var topBarCapsuleBackground: some ShapeStyle {
+        Color(.systemBackground)
+    }
+
+    private var topBarCircleBackground: some ShapeStyle {
+        Color(.systemBackground)
+    }
+
+    private var topBarOutline: some View {
+        Capsule()
+            .stroke(Color.black.opacity(0.08), lineWidth: 1)
     }
 
     // MARK: - Bottom
@@ -375,12 +447,26 @@ struct MapView: View {
                 .font(Theme.Fonts.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button { appState.selectedTab = .search } label: {
-                Text(loc.mapSearchByCity)
+            Button {
+                if locationManager.hasBeenDenied {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } else {
+                    locationManager.requestPermission()
+                }
+            } label: {
+                Text(locationManager.hasBeenDenied ? loc.mapOpenSettings : loc.mapEnableLocationAction)
                     .font(Theme.Fonts.headline)
             }
             .buttonStyle(.borderedProminent)
             .tint(Theme.Colors.accent)
+
+            Button { appState.selectedTab = .search } label: {
+                Text(loc.mapSearchByCity)
+                    .font(Theme.Fonts.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.plain)
         }
         .padding(Theme.Spacing.xl)
         .frame(maxWidth: 280)
@@ -410,24 +496,15 @@ struct MapView: View {
             cachedAveragePrice = nil
             return
         }
-        let nearby = store.nearbyStations(
+        let summary = store.nearbySummary(
             location: location,
             radiusKm: preferences.preferredRadiusKm,
             fuelType: preferences.selectedFuelType,
             limit: 100
         )
-        visibleStations = nearby
-
-        let fuelType = preferences.selectedFuelType
-        cachedCheapest = nearby
-            .min { ($0.price(for: fuelType) ?? .greatestFiniteMagnitude) < ($1.price(for: fuelType) ?? .greatestFiniteMagnitude) }
-
-        let prices = nearby.compactMap { $0.price(for: fuelType) }
-        if prices.isEmpty {
-            cachedAveragePrice = store.cachedAveragePrice
-        } else {
-            cachedAveragePrice = prices.reduce(Decimal.zero, +) / Decimal(prices.count)
-        }
+        visibleStations = summary.visibleStations
+        cachedCheapest = summary.cheapestStation
+        cachedAveragePrice = summary.averagePrice
 
         updateWidgetData(location: location)
         recordPriceHistory()
@@ -462,7 +539,9 @@ struct MapView: View {
               let cheapestPrice = cheapest.price(for: preferences.selectedFuelType) else { return }
         Task {
             await PriceHistoryStore.shared.record(
+                country: preferences.selectedCountry,
                 fuelType: preferences.selectedFuelType,
+                radiusKm: preferences.preferredRadiusKm,
                 cheapest: cheapestPrice,
                 average: avg,
                 stationCount: visibleStations.count
@@ -490,6 +569,107 @@ struct MapView: View {
         }
     }
 
+}
+
+private struct VehicleSwitcherSheet: View {
+    @Environment(UserPreferences.self) private var preferences
+    @Environment(\.dismiss) private var dismiss
+
+    let onSelectVehicle: (Vehicle) -> Void
+    let onEditVehicle: () -> Void
+    let onAddVehicle: () -> Void
+
+    private var loc: Loc { preferences.loc }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    VStack(spacing: 4) {
+                        Text(preferences.selectedVehicle.name)
+                            .font(.title2.weight(.bold))
+                        Text(preferences.selectedFuelType.displayName(for: preferences.selectedCountry))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 8)
+
+                    VStack(spacing: 10) {
+                        ForEach(preferences.vehicles) { vehicle in
+                            Button {
+                                onSelectVehicle(vehicle)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    VehicleAvatar(vehicle: vehicle, size: 40)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(vehicle.name)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundStyle(Color(.label))
+                                        Text(vehicle.fuelType.displayName(for: preferences.selectedCountry))
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(Color(.secondaryLabel))
+                                    }
+                                    Spacer()
+                                    if preferences.selectedVehicleId == vehicle.id {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundStyle(Theme.Colors.accent)
+                                    }
+                                }
+                                .padding(14)
+                                .background(Color(.secondarySystemGroupedBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    VStack(spacing: 10) {
+                        Button {
+                            onEditVehicle()
+                            dismiss()
+                        } label: {
+                            actionRow(icon: "pencil", title: loc.edit)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            onAddVehicle()
+                            dismiss()
+                        } label: {
+                            actionRow(icon: "plus.circle", title: loc.settingsAddVehicle)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(16)
+            }
+            .navigationTitle(preferences.selectedVehicle.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(loc.close) { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func actionRow(icon: String, title: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Theme.Colors.accent)
+                .frame(width: 24)
+            Text(title)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.Colors.accent)
+            Spacer()
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
 }
 
 // MARK: - Radius Picker Sheet

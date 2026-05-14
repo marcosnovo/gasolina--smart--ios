@@ -27,8 +27,21 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
     }
 
     func distanceKm(from location: CLLocation) -> Double {
-        let stationLocation = CLLocation(latitude: latitude, longitude: longitude)
-        return location.distance(from: stationLocation) / 1000.0
+        GeoDistance.distance(
+            fromLatitude: location.coordinate.latitude,
+            fromLongitude: location.coordinate.longitude,
+            toLatitude: latitude,
+            toLongitude: longitude
+        ) / 1000.0
+    }
+
+    func distanceKm(from coordinate: CLLocationCoordinate2D) -> Double {
+        GeoDistance.distance(
+            fromLatitude: coordinate.latitude,
+            fromLongitude: coordinate.longitude,
+            toLatitude: latitude,
+            toLongitude: longitude
+        ) / 1000.0
     }
 
     var maxPowerKW: Double? {
