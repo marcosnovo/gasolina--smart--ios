@@ -28,6 +28,7 @@ struct MapView: View {
     @State private var showStationList = false
     @State private var pendingArea: VisibleMapArea?
     @State private var isAreaMode = false
+    @State private var isAreaLoading = false
 
     var body: some View {
         ZStack {
@@ -403,11 +404,17 @@ struct MapView: View {
 
     private func searchInAreaButton(area: VisibleMapArea) -> some View {
         Button {
-            applyAreaSearch(area)
+            Task { await applyAreaSearch(area) }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13, weight: .semibold))
+                if isAreaLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 13, weight: .semibold))
+                }
                 Text(loc.mapSearchThisArea)
                     .font(.system(size: 14, weight: .semibold))
             }
@@ -419,23 +426,82 @@ struct MapView: View {
             .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
         }
         .buttonStyle(.plain)
+        .disabled(isAreaLoading)
     }
 
-    private func applyAreaSearch(_ area: VisibleMapArea) {
-        let summary = store.areaSummary(
-            minLatitude: area.minLatitude,
-            maxLatitude: area.maxLatitude,
-            minLongitude: area.minLongitude,
-            maxLongitude: area.maxLongitude,
-            fuelType: preferences.selectedFuelType,
-            limit: 30
-        )
-        visibleStations = summary.visibleStations
-        cachedCheapest = summary.cheapestStation
-        cachedAveragePrice = summary.averagePrice
-        isAreaMode = true
-        withAnimation(.easeInOut(duration: 0.2)) {
-            pendingArea = nil
+    private func applyAreaSearch(_ area: VisibleMapArea) async {
+        let centerLat = (area.minLatitude + area.maxLatitude) / 2
+        let centerLon = (area.minLongitude + area.maxLongitude) / 2
+        let center = CLLocation(latitude: centerLat, longitude: centerLon)
+        let corner = CLLocation(latitude: area.maxLatitude, longitude: area.maxLongitude)
+        // Half the diagonal of the visible box, in km.
+        let radiusKm = max(center.distance(from: corner) / 1000, 1)
+
+        isAreaLoading = true
+        defer { isAreaLoading = false }
+
+        do {
+            let response = try await BackendAPIService.shared.fetchStationsNearby(
+                latitude: centerLat,
+                longitude: centerLon,
+                radiusKm: radiusKm,
+                country: preferences.selectedCountry,
+                fuelType: preferences.selectedFuelType,
+                limit: 200
+            )
+            var stations = response.stations.map { $0.toFuelStation() }
+
+            // When zoomed out, keep only the 30 cheapest so the map stays useful.
+            if stations.count > 30 {
+                stations.sort { a, b in
+                    let pa = a.price(for: preferences.selectedFuelType) ?? .greatestFiniteMagnitude
+                    let pb = b.price(for: preferences.selectedFuelType) ?? .greatestFiniteMagnitude
+                    return pa < pb
+                }
+                stations = Array(stations.prefix(30))
+            }
+
+            visibleStations = stations
+
+            let cheapest = stations.min { a, b in
+                let pa = a.price(for: preferences.selectedFuelType) ?? .greatestFiniteMagnitude
+                let pb = b.price(for: preferences.selectedFuelType) ?? .greatestFiniteMagnitude
+                return pa < pb
+            }
+            cachedCheapest = cheapest
+
+            if let avg = response.average_price {
+                cachedAveragePrice = Decimal(avg)
+            } else {
+                let prices = stations.compactMap { $0.price(for: preferences.selectedFuelType) }
+                cachedAveragePrice = prices.isEmpty
+                    ? nil
+                    : prices.reduce(Decimal.zero, +) / Decimal(prices.count)
+            }
+
+            isAreaMode = true
+            withAnimation(.easeInOut(duration: 0.2)) {
+                pendingArea = nil
+            }
+        } catch {
+            // On failure, fall back to the in-memory cache so the user still
+            // sees something useful, and surface no error UI (Map already has
+            // its own error bar for the main flow).
+            let summary = store.areaSummary(
+                minLatitude: area.minLatitude,
+                maxLatitude: area.maxLatitude,
+                minLongitude: area.minLongitude,
+                maxLongitude: area.maxLongitude,
+                fuelType: preferences.selectedFuelType,
+                limit: 30
+            )
+            visibleStations = summary.visibleStations
+            cachedCheapest = summary.cheapestStation
+            cachedAveragePrice = summary.averagePrice
+            isAreaMode = true
+            withAnimation(.easeInOut(duration: 0.2)) {
+                pendingArea = nil
+            }
         }
     }
 
