@@ -90,7 +90,7 @@ struct MapLibreMapView: UIViewRepresentable {
             coordinator.lastCenterCounter = centerOnUserCounter
             if let coord = mapView.userLocation?.coordinate,
                CLLocationCoordinate2DIsValid(coord) {
-                coordinator.pendingProgrammaticChange = true
+                coordinator.lastProgrammaticChangeAt = Date()
                 mapView.setCenter(coord, zoomLevel: 13, animated: true)
             }
         }
@@ -112,7 +112,7 @@ struct MapLibreMapView: UIViewRepresentable {
                         longitude: coord.longitude + lonDelta / 2
                     )
                 )
-                coordinator.pendingProgrammaticChange = true
+                coordinator.lastProgrammaticChangeAt = Date()
                 mapView.setVisibleCoordinateBounds(bounds, animated: true)
             }
         }
@@ -122,7 +122,7 @@ struct MapLibreMapView: UIViewRepresentable {
            let cheapestAnn = coordinator.annotationMap[cheapestId],
            let userCoord = mapView.userLocation?.coordinate,
            CLLocationCoordinate2DIsValid(userCoord) {
-            coordinator.pendingProgrammaticChange = true
+            coordinator.lastProgrammaticChangeAt = Date()
             coordinator.fitBounds(on: mapView, coordinates: [userCoord, cheapestAnn.coordinate])
         }
     }
@@ -141,7 +141,13 @@ struct MapLibreMapView: UIViewRepresentable {
         var annotationMap: [String: StationPointAnnotation] = [:]
         var chargingAnnotationMap: [String: ChargingPointAnnotation] = [:]
         var needsFullReconfigure = false
-        var pendingProgrammaticChange = false
+        /// Timestamp of the most recent programmatic camera change (initial
+        /// fit, centerOnUser, zoomToRadius, fit-to-cheapest). The
+        /// regionDidChangeAnimated delegate ignores events that arrive within
+        /// 1.5 s of this timestamp so multiple back-to-back programmatic
+        /// updates at app launch can't trick us into thinking the user is
+        /// exploring.
+        var lastProgrammaticChangeAt: Date?
         private var hasFittedInitialBounds = false
         private var currentCheapestViewId: String?
 
@@ -238,6 +244,7 @@ struct MapLibreMapView: UIViewRepresentable {
                let userCoord = mapView.userLocation?.coordinate,
                CLLocationCoordinate2DIsValid(userCoord) {
                 hasFittedInitialBounds = true
+                lastProgrammaticChangeAt = Date()
                 fitBounds(on: mapView, coordinates: [userCoord, cheapestAnn.coordinate], animated: false)
             }
 
@@ -387,9 +394,11 @@ struct MapLibreMapView: UIViewRepresentable {
                 if let cheapestId = parent.cheapestId,
                    let cheapestAnn = annotationMap[cheapestId] {
                     hasFittedInitialBounds = true
+                    lastProgrammaticChangeAt = Date()
                     fitBounds(on: mapView, coordinates: [coord, cheapestAnn.coordinate], animated: false)
                 } else {
                     hasFittedInitialBounds = true
+                    lastProgrammaticChangeAt = Date()
                     mapView.setCenter(coord, zoomLevel: 13, animated: false)
                 }
             }
@@ -400,12 +409,12 @@ struct MapLibreMapView: UIViewRepresentable {
             // initial moves are programmatic and not "the user exploring".
             guard hasFittedInitialBounds else { return }
 
-            // Programmatic updates (centerOnUser, zoomToRadius, cheapest-fit)
-            // set this flag right before calling the map view; consume it here
-            // so we don't show the 'Search this area' button after our own
-            // moves.
-            if pendingProgrammaticChange {
-                pendingProgrammaticChange = false
+            // Programmatic updates (initial fit, centerOnUser, zoomToRadius,
+            // cheapest-fit) stamp lastProgrammaticChangeAt right before
+            // calling the map view. Animated camera moves can keep firing
+            // regionDidChangeAnimated for a moment after the call, so we ignore
+            // any change that arrives within 1.5 s of a programmatic update.
+            if let last = lastProgrammaticChangeAt, Date().timeIntervalSince(last) < 1.5 {
                 return
             }
 

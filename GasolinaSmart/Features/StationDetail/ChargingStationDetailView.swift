@@ -208,7 +208,7 @@ struct ChargingStationDetailView: View {
     }
 
     private func connectorTile(_ conn: ChargingConnection) -> some View {
-        let visual = ConnectorVisual.from(typeName: conn.typeName)
+        let visual = ChargingConnectorBadge.visual(for: conn.typeName)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 ZStack {
@@ -353,40 +353,3 @@ struct ChargingStationDetailView: View {
     }
 }
 
-/// Maps an OpenChargeMap connector typeName to an SF Symbol and brand colour
-/// so the connector grid is glanceable. Falls back to a neutral plug when the
-/// type isn't recognised — better than showing the same generic icon for all.
-private struct ConnectorVisual {
-    let symbol: String
-    let color: Color
-    let shortName: String
-
-    static func from(typeName raw: String) -> ConnectorVisual {
-        let name = raw.lowercased()
-        if name.contains("ccs") {
-            return .init(symbol: "ev.plug.dc.ccs2", color: Color(red: 0.20, green: 0.45, blue: 0.85), shortName: "CCS")
-        }
-        if name.contains("chademo") {
-            return .init(symbol: "ev.plug.dc.chademo", color: Color(red: 0.85, green: 0.45, blue: 0.10), shortName: "CHAdeMO")
-        }
-        if name.contains("nacs") || name.contains("j3400") {
-            return .init(symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20), shortName: "NACS")
-        }
-        if name.contains("tesla") {
-            return .init(symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20), shortName: "Tesla")
-        }
-        if name.contains("type 2") || name.contains("mennekes") || name.contains("iec 62196-2") {
-            return .init(symbol: "ev.plug.ac.type2", color: Color(red: 0.10, green: 0.55, blue: 0.20), shortName: "Type 2")
-        }
-        if name.contains("type 1") || name.contains("j1772") {
-            return .init(symbol: "ev.plug.ac.gb.t", color: Color(red: 0.60, green: 0.30, blue: 0.70), shortName: "Type 1")
-        }
-        if name.contains("schuko") || name.contains("domestic") {
-            return .init(symbol: "powerplug.fill", color: Color(red: 0.40, green: 0.40, blue: 0.40), shortName: "Schuko")
-        }
-        if name.contains("cee") {
-            return .init(symbol: "powerplug.fill", color: Color(red: 0.85, green: 0.55, blue: 0.10), shortName: "CEE")
-        }
-        return .init(symbol: "powerplug.fill", color: Color(.secondaryLabel), shortName: raw)
-    }
-}

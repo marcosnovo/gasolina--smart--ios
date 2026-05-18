@@ -302,7 +302,11 @@ struct ChargingRadarPanel: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.top, 3)
-                .padding(.bottom, 12)
+
+                connectorChips
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, 6)
+                    .padding(.bottom, 12)
 
                 Button(action: onNavigate) {
                     HStack(spacing: 5) {
@@ -351,5 +355,44 @@ struct ChargingRadarPanel: View {
         case .slow: Color(red: 0.55, green: 0.55, blue: 0.55)
         case .unknown: Color(.secondaryLabel)
         }
+    }
+
+    @ViewBuilder
+    private var connectorChips: some View {
+        let unique = uniqueConnectorNames
+        if unique.isEmpty {
+            Text(loc.chargingNoInfo)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+        } else {
+            HStack(spacing: 4) {
+                ForEach(unique.prefix(3), id: \.self) { name in
+                    let v = ChargingConnectorBadge.visual(for: name)
+                    HStack(spacing: 3) {
+                        Image(systemName: v.symbol)
+                            .font(.system(size: 7, weight: .bold))
+                        Text(v.shortName)
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(v.color)
+                    .clipShape(Capsule())
+                }
+            }
+        }
+    }
+
+    private var uniqueConnectorNames: [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for c in station.connections {
+            let short = ChargingConnectorBadge.shortName(for: c.typeName)
+            if seen.insert(short).inserted {
+                ordered.append(c.typeName)
+            }
+        }
+        return ordered
     }
 }

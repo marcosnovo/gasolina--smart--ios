@@ -235,23 +235,37 @@ struct MapView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showStationList) {
-            StationListSheet(
-                stations: visibleStations,
-                userLocation: locationManager.location,
-                fuelType: preferences.selectedFuelType,
-                country: preferences.selectedCountry,
-                cheapestPrice: cachedCheapest?.price(for: preferences.selectedFuelType),
-                averagePrice: cachedAveragePrice,
-                radiusKm: preferences.preferredRadiusKm,
-                favoriteIds: preferences.favoriteStationIds,
-                onStationTapped: { station in
-                    showStationList = false
-                    appState.selectedStation = station
-                    appState.showStationDetail = true
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+            if preferences.selectedVehicle.isElectric {
+                ChargingListSheet(
+                    stations: chargingNearbyForList,
+                    userLocation: locationManager.location,
+                    radiusKm: preferences.preferredRadiusKm,
+                    onStationTapped: { station in
+                        showStationList = false
+                        selectedChargingStation = station
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            } else {
+                StationListSheet(
+                    stations: visibleStations,
+                    userLocation: locationManager.location,
+                    fuelType: preferences.selectedFuelType,
+                    country: preferences.selectedCountry,
+                    cheapestPrice: cachedCheapest?.price(for: preferences.selectedFuelType),
+                    averagePrice: cachedAveragePrice,
+                    radiusKm: preferences.preferredRadiusKm,
+                    favoriteIds: preferences.favoriteStationIds,
+                    onStationTapped: { station in
+                        showStationList = false
+                        appState.selectedStation = station
+                        appState.showStationDetail = true
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
         }
         .sheet(isPresented: $showVehicleMenu) {
             VehicleSwitcherSheet(
@@ -271,6 +285,20 @@ struct MapView: View {
             .presentationDetents([.height(320)])
             .presentationDragIndicator(.visible)
         }
+    }
+
+    // MARK: - List sheet helpers
+
+    private var chargingNearbyForList: [ChargingStation] {
+        guard let location = locationManager.location else { return visibleChargingStations }
+        // When in area mode we already filtered chargingStore to the visible
+        // rectangle; otherwise pull a fresh nearby slice up to 200 stations.
+        if isAreaMode { return visibleChargingStations }
+        return chargingStore.nearbyStations(
+            location: location,
+            radiusKm: preferences.preferredRadiusKm,
+            limit: 200
+        )
     }
 
     // MARK: - Vehicle Pill
@@ -1235,5 +1263,318 @@ private struct StationListRow: View {
         .padding(.horizontal, 12)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+// MARK: - Charging List Sheet (EV)
+
+private struct ChargingListSheet: View {
+    @Environment(UserPreferences.self) private var preferences
+    @Environment(\.dismiss) private var dismiss
+
+    let stations: [ChargingStation]
+    let userLocation: CLLocation?
+    let radiusKm: Double
+    let onStationTapped: (ChargingStation) -> Void
+
+    @State private var selectedTab: SortTab = .recommended
+
+    private var loc: Loc { preferences.loc }
+
+    enum SortTab: String, CaseIterable, Hashable {
+        case recommended
+        case price
+        case speed
+        case distance
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Text(loc.listResultsInRadius(sortedStations.count, Int(radiusKm)))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
+
+                Picker("", selection: $selectedTab) {
+                    Text(loc.listRecommended).tag(SortTab.recommended)
+                    Text(loc.listPrice).tag(SortTab.price)
+                    Text(loc.listSpeed).tag(SortTab.speed)
+                    Text(loc.listDistance).tag(SortTab.distance)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+
+                if sortedStations.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "bolt.slash")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                        Text(loc.mapNoStations(Int(radiusKm)))
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(Array(sortedStations.enumerated()), id: \.element.id) { idx, station in
+                                Button {
+                                    onStationTapped(station)
+                                } label: {
+                                    ChargingListRow(
+                                        station: station,
+                                        rank: idx + 1,
+                                        distance: distance(for: station)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 24)
+                    }
+                }
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle(loc.listChargingTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(loc.close) { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var sortedStations: [ChargingStation] {
+        let withCoords = stations.filter(\.isOperational)
+        switch selectedTab {
+        case .price:
+            return withCoords.sorted { a, b in
+                switch (a.pricePerKWh, b.pricePerKWh) {
+                case (let pa?, let pb?): return pa < pb
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return (a.maxPowerKW ?? 0) > (b.maxPowerKW ?? 0)
+                }
+            }
+        case .speed:
+            return withCoords.sorted { ($0.maxPowerKW ?? 0) > ($1.maxPowerKW ?? 0) }
+        case .distance:
+            guard let location = userLocation else { return withCoords }
+            return withCoords.sorted {
+                $0.distanceKm(from: location) < $1.distanceKm(from: location)
+            }
+        case .recommended:
+            // Compound score:
+            //   priceScore  = cheapestPrice / stationPrice           (higher = cheaper)
+            //   speedScore  = min(maxKW, 150) / 150                  (higher = faster, capped)
+            //   distScore   = 1 - distance / radius                  (higher = closer)
+            //   total = 0.5 * price + 0.25 * speed + 0.25 * distance
+            // Stations without a price still rank reasonably via speed + distance.
+            guard let location = userLocation else { return withCoords }
+            let prices = withCoords.compactMap(\.pricePerKWh)
+            let cheapest = prices.min() ?? 1
+            let maxDistKm = max(radiusKm, 1)
+            return withCoords.sorted {
+                score(for: $0, cheapestPrice: cheapest, location: location, maxDistKm: maxDistKm)
+                    > score(for: $1, cheapestPrice: cheapest, location: location, maxDistKm: maxDistKm)
+            }
+        }
+    }
+
+    private func score(
+        for station: ChargingStation,
+        cheapestPrice: Decimal,
+        location: CLLocation,
+        maxDistKm: Double
+    ) -> Double {
+        let priceScore: Double
+        if let price = station.pricePerKWh, price > 0 {
+            priceScore = NSDecimalNumber(decimal: cheapestPrice / price).doubleValue
+        } else {
+            priceScore = 0.6 // unknown — middling
+        }
+        let speedScore = min(station.maxPowerKW ?? 0, 150) / 150.0
+        let distKm = station.distanceKm(from: location)
+        let distScore = max(0, 1 - distKm / maxDistKm)
+        return priceScore * 0.5 + speedScore * 0.25 + distScore * 0.25
+    }
+
+    private func distance(for station: ChargingStation) -> Double? {
+        guard let location = userLocation else { return nil }
+        return station.distanceKm(from: location)
+    }
+}
+
+private struct ChargingListRow: View {
+    let station: ChargingStation
+    let rank: Int
+    let distance: Double?
+
+    @Environment(UserPreferences.self) private var preferences
+    private var loc: Loc { preferences.loc }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(rank == 1 ? Theme.Colors.charging : Color(.tertiarySystemFill))
+                    .frame(width: 28, height: 28)
+                Text("\(rank)")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(rank == 1 ? .white : Color(.label))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(station.operatorName.isEmpty ? station.name : station.operatorName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(Color(.label))
+
+                HStack(spacing: 6) {
+                    if let distance {
+                        Text(distance.distanceFormatted)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color(.secondaryLabel))
+                        Text("·")
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                    Text(loc.chargingSpeedLabel(station.speedCategory))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(speedColor)
+                }
+
+                if !station.connections.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(uniqueConnectors, id: \.self) { typeName in
+                                connectorChip(typeName)
+                            }
+                        }
+                    }
+                } else {
+                    Text(loc.chargingNoInfo)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                if station.isFree {
+                    Text("Gratis")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(red: 0.10, green: 0.55, blue: 0.20))
+                } else if let price = station.pricePerKWh {
+                    Text(price.priceFormatted)
+                        .font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Color(.label))
+                    Text("€/kWh")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                } else if let maxKW = station.maxPowerKW {
+                    Text("\(Int(maxKW.rounded()))")
+                        .font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Theme.Colors.charging)
+                    Text("kW")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                } else {
+                    Text("—")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Theme.Colors.charging.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var uniqueConnectors: [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for c in station.connections {
+            let visual = ChargingConnectorBadge.shortName(for: c.typeName)
+            if seen.insert(visual).inserted {
+                ordered.append(c.typeName)
+            }
+        }
+        return ordered
+    }
+
+    private func connectorChip(_ typeName: String) -> some View {
+        let visual = ChargingConnectorBadge.visual(for: typeName)
+        return HStack(spacing: 3) {
+            Image(systemName: visual.symbol)
+                .font(.system(size: 8, weight: .bold))
+            Text(visual.shortName)
+                .font(.system(size: 10, weight: .bold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(visual.color)
+        .clipShape(Capsule())
+    }
+
+    private var speedColor: Color {
+        switch station.speedCategory {
+        case .fast: Color(red: 0.10, green: 0.55, blue: 0.20)
+        case .semiFast: Color(red: 0.85, green: 0.55, blue: 0.10)
+        case .slow: Color(red: 0.55, green: 0.55, blue: 0.55)
+        case .unknown: Color(.secondaryLabel)
+        }
+    }
+}
+
+/// Shared connector → (symbol, colour, shortName) mapping used in detail
+/// view, list and radar. Centralised so all surfaces agree on, e.g.,
+/// "blue for CCS, orange for CHAdeMO".
+enum ChargingConnectorBadge {
+    struct Visual { let symbol: String; let color: Color; let shortName: String }
+
+    static func visual(for raw: String) -> Visual {
+        let name = raw.lowercased()
+        if name.contains("ccs") {
+            return .init(symbol: "ev.plug.dc.ccs2", color: Color(red: 0.20, green: 0.45, blue: 0.85), shortName: "CCS")
+        }
+        if name.contains("chademo") {
+            return .init(symbol: "ev.plug.dc.chademo", color: Color(red: 0.85, green: 0.45, blue: 0.10), shortName: "CHAdeMO")
+        }
+        if name.contains("nacs") || name.contains("j3400") {
+            return .init(symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20), shortName: "NACS")
+        }
+        if name.contains("tesla") {
+            return .init(symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20), shortName: "Tesla")
+        }
+        if name.contains("type 2") || name.contains("mennekes") {
+            return .init(symbol: "ev.plug.ac.type2", color: Color(red: 0.10, green: 0.55, blue: 0.20), shortName: "Type 2")
+        }
+        if name.contains("type 1") || name.contains("j1772") {
+            return .init(symbol: "ev.plug.ac.gb.t", color: Color(red: 0.60, green: 0.30, blue: 0.70), shortName: "Type 1")
+        }
+        if name.contains("schuko") {
+            return .init(symbol: "powerplug.fill", color: Color(red: 0.40, green: 0.40, blue: 0.40), shortName: "Schuko")
+        }
+        if name.contains("cee") {
+            return .init(symbol: "powerplug.fill", color: Color(red: 0.85, green: 0.55, blue: 0.10), shortName: "CEE")
+        }
+        return .init(symbol: "powerplug.fill", color: Color(.secondaryLabel), shortName: raw)
+    }
+
+    static func shortName(for raw: String) -> String {
+        visual(for: raw).shortName
     }
 }

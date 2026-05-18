@@ -102,6 +102,10 @@ struct Vehicle: Codable, Identifiable, Hashable {
     /// default (50 kWh) for compatibility with vehicles created before this
     /// field existed.
     var batteryCapacityKWh: Double?
+    /// Connector "shortName" values the vehicle can plug into
+    /// (e.g. ["CCS", "Type 2"]). Empty for non-EVs.
+    /// Defaults to [CCS, Type 2] for a freshly-created European EV.
+    var preferredConnectors: Set<String>
     var tankSizeLiters: Double
     var consumptionL100Km: Double
     var vehicleType: VehicleType
@@ -110,6 +114,7 @@ struct Vehicle: Codable, Identifiable, Hashable {
     init(id: UUID = UUID(), name: String, brand: String = "",
          fuelType: FuelType, hasGLP: Bool = false, isElectric: Bool = false,
          batteryCapacityKWh: Double? = nil,
+         preferredConnectors: Set<String> = [],
          tankSizeLiters: Double = 50,
          consumptionL100Km: Double = 7.0,
          vehicleType: VehicleType = .sedan, vehicleColor: VehicleColor = .silver) {
@@ -127,6 +132,10 @@ struct Vehicle: Codable, Identifiable, Hashable {
         }
         self.isElectric = isElectric
         self.batteryCapacityKWh = batteryCapacityKWh
+        // Sensible default for fresh European EVs.
+        self.preferredConnectors = preferredConnectors.isEmpty && isElectric
+            ? ["CCS", "Type 2"]
+            : preferredConnectors
         self.tankSizeLiters = tankSizeLiters
         self.consumptionL100Km = consumptionL100Km
         self.vehicleType = vehicleType
@@ -155,6 +164,7 @@ struct Vehicle: Codable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, brand, fuelType, hasGLP, isElectric, batteryCapacityKWh,
+             preferredConnectors,
              tankSizeLiters, consumptionL100Km, vehicleType, vehicleColor
     }
 
@@ -178,6 +188,12 @@ struct Vehicle: Codable, Identifiable, Hashable {
         }
         isElectric = try container.decodeIfPresent(Bool.self, forKey: .isElectric) ?? false
         batteryCapacityKWh = try container.decodeIfPresent(Double.self, forKey: .batteryCapacityKWh)
+        let storedConnectors = try container.decodeIfPresent(Set<String>.self, forKey: .preferredConnectors) ?? []
+        if storedConnectors.isEmpty, isElectric {
+            preferredConnectors = ["CCS", "Type 2"]
+        } else {
+            preferredConnectors = storedConnectors
+        }
 
         tankSizeLiters = try container.decode(Double.self, forKey: .tankSizeLiters)
         let vType = try container.decodeIfPresent(VehicleType.self, forKey: .vehicleType) ?? .sedan

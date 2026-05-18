@@ -53,6 +53,8 @@ struct Loc {
     var vehicleEngineElectric: String { s("Eléctrico", "Electric", "Électrique", "Elektro", "Elétrico") }
     var vehicleBatteryCapacity: String { s("Capacidad de batería", "Battery capacity", "Capacité de batterie", "Batteriekapazität", "Capacidade da bateria") }
     var vehicleBatteryCapacityHint: String { s("Para estimar el coste por carga.", "Used to estimate cost per charge.", "Pour estimer le coût par charge.", "Zur Schätzung der Kosten pro Ladung.", "Para estimar o custo por carga.") }
+    var vehicleConnectors: String { s("Conectores compatibles", "Compatible connectors", "Connecteurs compatibles", "Kompatible Stecker", "Conectores compatíveis") }
+    var vehicleConnectorsHint: String { s("Selecciona los conectores que tu coche acepta.", "Pick the connectors your car can use.", "Sélectionnez les connecteurs compatibles avec votre voiture.", "Wählen Sie die Stecker, die Ihr Auto unterstützt.", "Selecione os conectores compatíveis com o seu carro.") }
 
     // MARK: - Map
 
@@ -83,9 +85,12 @@ struct Loc {
     var mapSearchThisArea: String { s("Buscar en esta zona", "Search this area", "Rechercher dans cette zone", "In diesem Bereich suchen", "Pesquisar nesta área") }
     var mapBackToMyArea: String { s("Volver a mi zona", "Back to my area", "Retour à ma zone", "Zurück zu meinem Bereich", "Voltar à minha zona") }
     var listTitle: String { s("Gasolineras", "Stations", "Stations", "Tankstellen", "Postos") }
+    var listChargingTitle: String { s("Puntos de carga", "Charging points", "Points de charge", "Ladepunkte", "Pontos de carregamento") }
     var listRecommended: String { s("Recomendado", "Recommended", "Recommandé", "Empfohlen", "Recomendado") }
     var listPrice: String { s("Precio", "Price", "Prix", "Preis", "Preço") }
+    var listSpeed: String { s("Velocidad", "Speed", "Vitesse", "Geschwindigkeit", "Velocidade") }
     var listDistance: String { s("Distancia", "Distance", "Distance", "Entfernung", "Distância") }
+    var chargingNoInfo: String { s("Sin información", "No information", "Aucune info", "Keine Angaben", "Sem informação") }
     func listResultsInRadius(_ count: Int, _ km: Int) -> String {
         s("\(count) en \(km) km", "\(count) within \(km) km", "\(count) dans \(km) km", "\(count) im Umkreis von \(km) km", "\(count) em \(km) km")
     }

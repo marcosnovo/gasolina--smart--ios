@@ -970,6 +970,7 @@ struct VehicleEditSheet: View {
     @State private var hasGLP: Bool
     @State private var isElectric: Bool
     @State private var batteryCapacityKWh: Double
+    @State private var preferredConnectors: Set<String>
     @State private var tankSize: Double
     @State private var consumptionL100Km: Double
     @State private var vehicleType: VehicleType
@@ -987,6 +988,7 @@ struct VehicleEditSheet: View {
         _hasGLP = State(initialValue: v.hasGLP)
         _isElectric = State(initialValue: v.isElectric)
         _batteryCapacityKWh = State(initialValue: v.batteryCapacityKWh ?? 50)
+        _preferredConnectors = State(initialValue: v.preferredConnectors.isEmpty ? ["CCS", "Type 2"] : v.preferredConnectors)
         _tankSize = State(initialValue: v.tankSizeLiters)
         _consumptionL100Km = State(initialValue: v.consumptionL100Km)
         _vehicleType = State(initialValue: v.vehicleType)
@@ -1007,6 +1009,7 @@ struct VehicleEditSheet: View {
                 engineTypeSection
                 if isElectric {
                     batterySection
+                    connectorsSection
                 } else {
                     fuelSection
                     tankSection
@@ -1037,6 +1040,7 @@ struct VehicleEditSheet: View {
         Vehicle(name: name, brand: brand, fuelType: fuelType, hasGLP: hasGLP,
                 isElectric: isElectric,
                 batteryCapacityKWh: isElectric ? batteryCapacityKWh : nil,
+                preferredConnectors: isElectric ? preferredConnectors : [],
                 tankSizeLiters: tankSize, consumptionL100Km: consumptionL100Km,
                 vehicleType: vehicleType, vehicleColor: vehicleColor)
     }
@@ -1211,6 +1215,68 @@ struct VehicleEditSheet: View {
         }
     }
 
+    private var connectorsSection: some View {
+        Section {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
+                spacing: 10
+            ) {
+                ForEach(Self.connectorOptions, id: \.shortName) { conn in
+                    let isSelected = preferredConnectors.contains(conn.shortName)
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            if isSelected {
+                                preferredConnectors.remove(conn.shortName)
+                            } else {
+                                preferredConnectors.insert(conn.shortName)
+                            }
+                        }
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: conn.symbol)
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundStyle(isSelected ? conn.color : Color(.secondaryLabel))
+                            Text(conn.shortName)
+                                .font(.system(size: 13, weight: isSelected ? .bold : .semibold))
+                                .foregroundStyle(isSelected ? conn.color : Color(.label))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(isSelected ? conn.color.opacity(0.12) : Color(.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(isSelected ? conn.color : .clear, lineWidth: 2)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 4)
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+            .listRowBackground(Color.clear)
+        } header: {
+            Text(loc.vehicleConnectors)
+        } footer: {
+            Text(loc.vehicleConnectorsHint)
+        }
+    }
+
+    private struct ConnectorOption {
+        let shortName: String
+        let symbol: String
+        let color: Color
+    }
+
+    private static let connectorOptions: [ConnectorOption] = [
+        .init(shortName: "CCS", symbol: "ev.plug.dc.ccs2", color: Color(red: 0.20, green: 0.45, blue: 0.85)),
+        .init(shortName: "CHAdeMO", symbol: "ev.plug.dc.chademo", color: Color(red: 0.85, green: 0.45, blue: 0.10)),
+        .init(shortName: "Type 2", symbol: "ev.plug.ac.type2", color: Color(red: 0.10, green: 0.55, blue: 0.20)),
+        .init(shortName: "Type 1", symbol: "ev.plug.ac.gb.t", color: Color(red: 0.60, green: 0.30, blue: 0.70)),
+        .init(shortName: "NACS", symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20)),
+        .init(shortName: "Schuko", symbol: "powerplug.fill", color: Color(.secondaryLabel)),
+    ]
+
     private var pickablePrimaryFuels: [FuelType] {
         // GLP is handled by the separate toggle; the picker is exclusively for
         // gasoline / diesel options.
@@ -1338,6 +1404,7 @@ struct VehicleEditSheet: View {
             hasGLP: hasGLP,
             isElectric: isElectric,
             batteryCapacityKWh: isElectric ? batteryCapacityKWh : nil,
+            preferredConnectors: isElectric ? preferredConnectors : [],
             tankSizeLiters: tankSize,
             consumptionL100Km: consumptionL100Km,
             vehicleType: vehicleType,
