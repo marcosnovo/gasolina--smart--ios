@@ -161,6 +161,20 @@ struct MapView: View {
             exitAreaMode()
             updateVisibleStations()
         }
+        .onChange(of: preferences.selectedVehicleId) { _, _ in
+            handleVehicleSwitch()
+        }
+        .onChange(of: preferences.selectedVehicle.isElectric) { _, _ in
+            // Switching engine type changes which dataset drives the map
+            // (fuel stations vs charging points). Refresh both layers and
+            // the radar cache.
+            handleVehicleSwitch()
+        }
+        .onChange(of: preferences.selectedVehicle.preferredConnectors) { _, _ in
+            // Connector preferences feed the charging-station filter.
+            updateChargingStations()
+            updateChargingSummary()
+        }
         .onChange(of: chargingStore.stations) { _, _ in
             updateChargingStations()
             updateChargingSummary()
@@ -637,6 +651,29 @@ struct MapView: View {
             .background(.regularMaterial)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
             .padding(.horizontal, Theme.Spacing.md)
+        }
+    }
+
+    /// Re-syncs every layer after the active vehicle changes (different
+    /// vehicle picked, or current vehicle's engine type edited). Fixes the
+    /// stale-map bug where switching between two cars that happen to share
+    /// the same `fuelType` (e.g. an EV with default gasolina95 + a real G95
+    /// car) wouldn't trigger selectedFuelType.didChange.
+    private func handleVehicleSwitch() {
+        exitAreaMode()
+        updateVisibleStations()
+        if preferences.effectiveShowChargingStations {
+            // Make sure the snapshot for this country is loaded; the store
+            // will short-circuit if we already have fresh data.
+            Task {
+                await chargingStore.loadAllCountryStations(country: preferences.selectedCountry)
+                updateChargingStations()
+                updateChargingSummary()
+            }
+        } else {
+            // Combustion vehicle: drop any stale charging overlays.
+            visibleChargingStations = []
+            cachedChargingSummary = nil
         }
     }
 
