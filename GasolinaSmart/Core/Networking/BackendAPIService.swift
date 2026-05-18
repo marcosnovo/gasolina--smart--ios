@@ -127,6 +127,72 @@ actor BackendAPIService {
         return try JSONDecoder().decode(StationsResponse.self, from: data)
     }
 
+    // MARK: - All EV charging stations of a country
+
+    struct ChargingResponse: Decodable, Sendable {
+        let stations: [ChargingDTO]
+        let count: Int
+        let last_updated: String?
+    }
+
+    struct ChargingConnectionDTO: Decodable, Sendable {
+        let typeName: String
+        let powerKW: Double?
+        let quantity: Int?
+    }
+
+    struct ChargingDTO: Decodable, Sendable {
+        let id: String
+        let name: String
+        let operator_name: String?
+        let address: String
+        let municipality: String
+        let province: String
+        let latitude: Double
+        let longitude: Double
+        let country: String
+        let number_of_points: Int
+        let is_operational: Bool
+        let usage_cost: String?
+        let max_power_kw: Double?
+        let connections: [ChargingConnectionDTO]
+        let updated_at: String
+
+        func toChargingStation() -> ChargingStation {
+            let conns = connections.map {
+                ChargingConnection(typeName: $0.typeName, powerKW: $0.powerKW, quantity: $0.quantity)
+            }
+            return ChargingStation(
+                id: id,
+                name: name,
+                operatorName: operator_name ?? "",
+                address: address,
+                town: municipality,
+                province: province,
+                latitude: latitude,
+                longitude: longitude,
+                connections: conns,
+                numberOfPoints: number_of_points,
+                isOperational: is_operational,
+                usageCost: usage_cost,
+                lastUpdated: BackendAPIService.isoFormatter.date(from: updated_at)
+            )
+        }
+    }
+
+    func fetchAllChargingStations(country: Country = .spain) async throws -> ChargingResponse {
+        var components = URLComponents(string: "\(base(for: country))/api/charging/all")!
+        components.queryItems = [
+            URLQueryItem(name: "country", value: country.rawValue),
+        ]
+        guard let url = components.url else { throw BackendError.invalidURL }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 60
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(ChargingResponse.self, from: data)
+    }
+
     // MARK: - All stations of a country (full snapshot)
 
     func fetchAllStations(country: Country = .spain) async throws -> StationsResponse {

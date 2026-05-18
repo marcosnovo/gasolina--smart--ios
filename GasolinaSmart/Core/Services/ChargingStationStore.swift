@@ -7,11 +7,51 @@ final class ChargingStationStore {
     private(set) var stations: [ChargingStation] = []
     private(set) var isLoading = false
     private(set) var error: String?
+    private(set) var lastUpdated: Date?
     private var lastFetchLocation: CLLocation?
     private var lastFetchRadius: Double = 0
     private var lastFetchTime: Date?
+    private var activeCountry: Country = .spain
     private var loadGeneration = 0
 
+    /// Whole-country EV charging snapshot from the Workers backend.
+    /// Mirrors StationStore.loadAllCountryStations — call once per session /
+    /// per country switch, then run all subsequent filters in-memory.
+    func loadAllCountryStations(country: Country, force: Bool = false) async {
+        loadGeneration += 1
+        let generation = loadGeneration
+
+        if !force, country == activeCountry,
+           let lastTime = lastFetchTime,
+           Date().timeIntervalSince(lastTime) < 30 * 60,
+           !stations.isEmpty {
+            return
+        }
+
+        activeCountry = country
+        isLoading = stations.isEmpty
+        error = nil
+
+        do {
+            let response = try await BackendAPIService.shared.fetchAllChargingStations(country: country)
+            guard generation == loadGeneration else { return }
+            stations = response.stations.map { $0.toChargingStation() }
+            lastFetchTime = Date()
+            lastUpdated = Date()
+        } catch {
+            guard generation == loadGeneration else { return }
+            if stations.isEmpty {
+                self.error = error.localizedDescription
+            }
+        }
+
+        if generation == loadGeneration {
+            isLoading = false
+        }
+    }
+
+    /// Legacy radius-based loader (OpenStreetMap fallback). Still useful when
+    /// the backend snapshot hasn't landed yet for a country.
     func loadStations(near location: CLLocation, radiusKm: Double) async {
         loadGeneration += 1
         let generation = loadGeneration

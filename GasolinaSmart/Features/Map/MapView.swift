@@ -121,8 +121,8 @@ struct MapView: View {
             // Full-country snapshot — covers the whole map, so panning
             // anywhere has data without needing more fetches.
             await store.loadAllCountryStations()
-            if preferences.effectiveShowChargingStations, let location = locationManager.location {
-                await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
+            if preferences.effectiveShowChargingStations {
+                await chargingStore.loadAllCountryStations(country: preferences.selectedCountry)
                 updateChargingStations()
             }
         }
@@ -137,7 +137,7 @@ struct MapView: View {
                 }
                 Task {
                     if preferences.effectiveShowChargingStations {
-                        await chargingStore.loadStations(near: newLocation, radiusKm: preferences.preferredRadiusKm)
+                        await chargingStore.loadAllCountryStations(country: preferences.selectedCountry)
                         updateChargingStations()
                     }
                 }
@@ -152,12 +152,9 @@ struct MapView: View {
             updateVisibleStations()
             updateChargingStations()
             zoomRadiusCounter += 1
-            Task {
-                if preferences.effectiveShowChargingStations, let location = locationManager.location {
-                    await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
-                    updateChargingStations()
-                }
-            }
+            // Charging snapshot is whole-country — radius changes only affect
+            // the local filter, no extra fetch needed.
+            updateChargingStations()
         }
         .onChange(of: preferences.selectedFuelType) { _, _ in
             exitAreaMode()
@@ -167,9 +164,9 @@ struct MapView: View {
             updateChargingStations()
         }
         .onChange(of: preferences.effectiveShowChargingStations) { _, showCharging in
-            if showCharging, let location = locationManager.location {
+            if showCharging {
                 Task {
-                    await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
+                    await chargingStore.loadAllCountryStations(country: preferences.selectedCountry)
                     updateChargingStations()
                 }
             } else {
