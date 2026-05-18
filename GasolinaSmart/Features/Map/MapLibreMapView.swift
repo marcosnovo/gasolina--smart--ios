@@ -786,32 +786,34 @@ class ChargingPinView: MLNAnnotationView {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(for station: ChargingStation) {
-        // Prefer the actual €/kWh price when we can parse it; otherwise fall
-        // back to the max power in kW. "Gratuito" stations get a green pill.
+        // Fast chargers get a green pill so they stand out on the map; the
+        // remainder use the standard charging-blue.
+        let isFast = station.speedCategory == .fast
+        let primaryColor: UIColor = (station.isFree || isFast) ? Self.fastGreen : Self.chargingBlue
+
         if station.isFree {
             valueLabel.text = "0,00"
             unitLabel.text = "€/kWh"
-            pillBackground.backgroundColor = Self.fastGreen
-            tailLayer.fillColor = Self.fastGreen.cgColor
         } else if let price = station.pricePerKWh {
             valueLabel.text = price.priceFormatted
             unitLabel.text = "€/kWh"
-            pillBackground.backgroundColor = Self.chargingBlue
-            tailLayer.fillColor = Self.chargingBlue.cgColor
         } else if let power = station.maxPowerKW {
             valueLabel.text = String(format: "%g", power.rounded())
             unitLabel.text = "kW"
-            pillBackground.backgroundColor = Self.chargingBlue
-            tailLayer.fillColor = Self.chargingBlue.cgColor
+        } else if isFast {
+            valueLabel.text = "⚡"
+            unitLabel.text = "Rápida"
         } else {
             valueLabel.text = "EV"
             unitLabel.text = ""
-            pillBackground.backgroundColor = Self.chargingBlue
-            tailLayer.fillColor = Self.chargingBlue.cgColor
         }
 
-        // Badge for fast chargers (>= 50 kW) — quick visual cue while scanning.
-        boltBadge.isHidden = (station.maxPowerKW ?? 0) < 50
+        pillBackground.backgroundColor = primaryColor
+        tailLayer.fillColor = primaryColor.cgColor
+
+        // Yellow badge with bolt on top so fast chargers are spottable
+        // even at a glance, regardless of the pill content.
+        boltBadge.isHidden = !isFast
     }
 
     override func prepareForReuse() {

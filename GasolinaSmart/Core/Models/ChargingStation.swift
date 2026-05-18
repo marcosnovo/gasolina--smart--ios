@@ -49,10 +49,21 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
     }
 
     var speedCategory: SpeedCategory {
-        guard let maxPower = maxPowerKW else { return .unknown }
-        if maxPower >= 50 { return .fast }
-        if maxPower >= 22 { return .semiFast }
-        return .slow
+        if let maxPower = maxPowerKW {
+            if maxPower >= 50 { return .fast }
+            if maxPower >= 22 { return .semiFast }
+            return .slow
+        }
+        // When OpenChargeMap doesn't report kW, infer from the connector type:
+        // CCS / CHAdeMO / NACS are always DC fast plugs. Iterate directly to
+        // avoid allocating a Set per call.
+        for conn in connections {
+            let short = ChargingStation.normalizeConnectorShortName(conn.typeName)
+            if short == "CCS" || short == "CHAdeMO" || short == "NACS" {
+                return .fast
+            }
+        }
+        return .unknown
     }
 
     var connectionSummary: String {
@@ -86,10 +97,19 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
     /// Permissive: a station with no connector info at all still matches —
     /// we'd rather show a possibly-compatible station than hide it because
     /// OpenChargeMap didn't have the data.
+    ///
+    /// Hot path: called once per station per filter pass (thousands of
+    /// stations × multiple filter calls per map update). Avoids allocating
+    /// a Set per call — short-circuits on the first matching connector.
     func matchesConnectorFilter(_ filter: Set<String>) -> Bool {
         if filter.isEmpty { return true }
         if connections.isEmpty { return true }
-        return !connectorShortNames.isDisjoint(with: filter)
+        for conn in connections {
+            if filter.contains(ChargingStation.normalizeConnectorShortName(conn.typeName)) {
+                return true
+            }
+        }
+        return false
     }
 
     /// Canonicalises an OpenChargeMap typeName ("CCS (Type 2)",

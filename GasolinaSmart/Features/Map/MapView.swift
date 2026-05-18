@@ -30,6 +30,7 @@ struct MapView: View {
     @State private var showStationList = false
     @State private var pendingArea: VisibleMapArea?
     @State private var isAreaMode = false
+    @State private var cachedChargingSummary: ChargingStationStore.ChargingSummary?
 
     var body: some View {
         ZStack {
@@ -124,10 +125,12 @@ struct MapView: View {
             if preferences.effectiveShowChargingStations {
                 await chargingStore.loadAllCountryStations(country: preferences.selectedCountry)
                 updateChargingStations()
+                updateChargingSummary()
             }
         }
         .onChange(of: locationManager.location) { _, newLocation in
             updateVisibleStations()
+            updateChargingSummary()
             markReadyIfNeeded()
             if let newLocation {
                 if preferences.autoDetectCountry,
@@ -151,10 +154,8 @@ struct MapView: View {
             exitAreaMode()
             updateVisibleStations()
             updateChargingStations()
+            updateChargingSummary()
             zoomRadiusCounter += 1
-            // Charging snapshot is whole-country — radius changes only affect
-            // the local filter, no extra fetch needed.
-            updateChargingStations()
         }
         .onChange(of: preferences.selectedFuelType) { _, _ in
             exitAreaMode()
@@ -162,6 +163,7 @@ struct MapView: View {
         }
         .onChange(of: chargingStore.stations) { _, _ in
             updateChargingStations()
+            updateChargingSummary()
         }
         .onChange(of: preferences.effectiveShowChargingStations) { _, showCharging in
             if showCharging {
@@ -612,33 +614,44 @@ struct MapView: View {
 
     @ViewBuilder
     private var electricBottomContent: some View {
-        if let location = locationManager.location {
-            let summary = chargingStore.nearbySummary(
-                location: location,
-                radiusKm: preferences.preferredRadiusKm,
-                limit: 200,
-                connectorFilter: preferences.selectedVehicle.preferredConnectors
-            )
-            if let cheapest = summary.cheapestStation {
-                ChargingRadarPanel(
-                    station: cheapest,
-                    averagePricePerKWh: summary.averagePricePerKWh,
-                    distance: cheapest.distanceKm(from: location),
-                    onTap: { selectedChargingStation = cheapest },
-                    onNavigate: {
-                        if preferences.enabledNavigationApps.count == 1,
-                           let app = preferences.enabledNavigationApps.first {
-                            NavigationHelper.openCharging(station: cheapest, app: app)
-                        } else {
-                            NavigationHelper.openCharging(station: cheapest, app: .appleMaps)
-                        }
+        // Reads pre-computed summary — keeps the body cheap. The summary is
+        // refreshed in updateChargingSummary() whenever its inputs change
+        // (location, radius, charging-store contents, vehicle connectors).
+        if let location = locationManager.location,
+           let summary = cachedChargingSummary,
+           let cheapest = summary.cheapestStation {
+            ChargingRadarPanel(
+                station: cheapest,
+                averagePricePerKWh: summary.averagePricePerKWh,
+                distance: cheapest.distanceKm(from: location),
+                onTap: { selectedChargingStation = cheapest },
+                onNavigate: {
+                    if preferences.enabledNavigationApps.count == 1,
+                       let app = preferences.enabledNavigationApps.first {
+                        NavigationHelper.openCharging(station: cheapest, app: app)
+                    } else {
+                        NavigationHelper.openCharging(station: cheapest, app: .appleMaps)
                     }
-                )
-                .background(.regularMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
-                .padding(.horizontal, Theme.Spacing.md)
-            }
+                }
+            )
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+            .padding(.horizontal, Theme.Spacing.md)
         }
+    }
+
+    private func updateChargingSummary() {
+        guard preferences.selectedVehicle.isElectric,
+              let location = locationManager.location else {
+            cachedChargingSummary = nil
+            return
+        }
+        cachedChargingSummary = chargingStore.nearbySummary(
+            location: location,
+            radiusKm: preferences.preferredRadiusKm,
+            limit: 200,
+            connectorFilter: preferences.selectedVehicle.preferredConnectors
+        )
     }
 
     private var loadingPill: some View {

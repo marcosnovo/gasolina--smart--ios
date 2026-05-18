@@ -34,8 +34,13 @@ final class ChargingStationStore {
 
         do {
             let response = try await BackendAPIService.shared.fetchAllChargingStations(country: country)
+            // Convert DTOs off the main actor — connector JSON parsing isn't
+            // free and a country can have tens of thousands of points.
+            let mapped = await Task.detached(priority: .userInitiated) {
+                response.stations.map { $0.toChargingStation() }
+            }.value
             guard generation == loadGeneration else { return }
-            stations = response.stations.map { $0.toChargingStation() }
+            stations = mapped
             lastFetchTime = Date()
             lastUpdated = Date()
         } catch {
