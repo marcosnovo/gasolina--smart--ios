@@ -19,6 +19,8 @@ struct MapView: View {
     @State private var visibleChargingStations: [ChargingStation] = []
     @State private var cachedCheapest: FuelStation?
     @State private var cachedAveragePrice: Decimal?
+    @State private var cheapestPriceByFuel: [FuelType: Decimal] = [:]
+    @State private var displayedFuelByStation: [String: FuelType] = [:]
 
     @State private var centerOnUserCounter = 0
     @State private var zoomRadiusCounter = 0
@@ -48,7 +50,8 @@ struct MapView: View {
                 zoomRadiusCounter: zoomRadiusCounter,
                 isDarkMode: preferences.appearance == .dark,
                 selectedFuelType: preferences.selectedFuelType,
-                cheapestPrice: cachedCheapest?.price(for: preferences.selectedFuelType),
+                cheapestPriceByFuel: cheapestPriceByFuel,
+                displayedFuelByStation: displayedFuelByStation,
                 onUserMovedMap: { area in
                     pendingArea = area
                 },
@@ -273,39 +276,89 @@ struct MapView: View {
         }
     }
 
+    // MARK: - Vehicle Pill
+
+    private var isDualFuelVehicle: Bool {
+        preferences.vehicleSupportedFuels.count > 1
+    }
+
+    private var vehiclePill: some View {
+        HStack(spacing: 0) {
+            // Left zone — vehicle picker.
+            Button { showVehicleMenu = true } label: {
+                HStack(spacing: 8) {
+                    VehicleAvatar(vehicle: preferences.selectedVehicle, size: 28)
+                    Text(preferences.selectedVehicle.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .foregroundStyle(Color(.label))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .fixedSize()
+                }
+                .padding(.leading, 10)
+                .padding(.trailing, 8)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // Right zone — fuel chip. For dual-fuel vehicles, tapping cycles
+            // the active primary fuel (GLP ↔ Gasoline) and the cheapest pin /
+            // average follow. Mono-fuel cars get the same chip without an
+            // action (kept for layout consistency).
+            Button {
+                guard isDualFuelVehicle else { return }
+                cycleVisibleFuel()
+            } label: {
+                HStack(spacing: 4) {
+                    Text(preferences.selectedFuelType.shortLabel(for: preferences.selectedCountry))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.Colors.accent)
+                        .lineLimit(1)
+                    if isDualFuelVehicle {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Theme.Colors.accent)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Theme.Colors.accent.opacity(isDualFuelVehicle ? 0.14 : 0.08))
+                .clipShape(Capsule())
+                .padding(.trailing, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!isDualFuelVehicle)
+        }
+        .background(topBarCapsuleBackground)
+        .overlay(topBarOutline)
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
+    }
+
+    private func cycleVisibleFuel() {
+        let fuels = preferences.vehicleSupportedFuels
+        guard fuels.count > 1,
+              let currentIndex = fuels.firstIndex(of: preferences.selectedFuelType) else {
+            return
+        }
+        let next = fuels[(currentIndex + 1) % fuels.count]
+        withAnimation(.snappy(duration: 0.2)) {
+            preferences.selectedFuelType = next
+        }
+        updateVisibleStations()
+    }
+
     // MARK: - Top Bar
 
     private var topBar: some View {
         HStack(spacing: 10) {
-            Button { showVehicleMenu = true } label: {
-                HStack(spacing: 8) {
-                    VehicleAvatar(vehicle: preferences.selectedVehicle, size: 28)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(preferences.selectedVehicle.name)
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .foregroundStyle(Color(.label))
-                        Text(preferences.selectedFuelType.shortLabel(for: preferences.selectedCountry))
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color(.secondaryLabel))
-                            .lineLimit(1)
-                    }
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color(.secondaryLabel))
-                        .fixedSize()
-                }
-                .padding(.trailing, 14)
-                .padding(.leading, 10)
-                .padding(.vertical, 8)
-                .background(topBarCapsuleBackground)
-                .overlay(topBarOutline)
-                .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
-            }
-            .buttonStyle(.plain)
-            .layoutPriority(1)
+            vehiclePill
+                .layoutPriority(1)
 
             Spacer(minLength: 12)
 
@@ -416,12 +469,15 @@ struct MapView: View {
             maxLatitude: area.maxLatitude,
             minLongitude: area.minLongitude,
             maxLongitude: area.maxLongitude,
-            fuelType: preferences.selectedFuelType,
+            fuelTypes: Set(preferences.vehicleSupportedFuels),
+            primaryFuel: preferences.selectedFuelType,
             limit: 30
         )
         visibleStations = summary.visibleStations
         cachedCheapest = summary.cheapestStation
         cachedAveragePrice = summary.averagePrice
+        cheapestPriceByFuel = summary.cheapestPriceByFuel
+        displayedFuelByStation = summary.displayedFuelByStation
         isAreaMode = true
         withAnimation(.easeInOut(duration: 0.2)) {
             pendingArea = nil
@@ -603,17 +659,22 @@ struct MapView: View {
             visibleStations = []
             cachedCheapest = nil
             cachedAveragePrice = nil
+            cheapestPriceByFuel = [:]
+            displayedFuelByStation = [:]
             return
         }
         let summary = store.nearbySummary(
             location: location,
             radiusKm: preferences.preferredRadiusKm,
-            fuelType: preferences.selectedFuelType,
+            fuelTypes: Set(preferences.vehicleSupportedFuels),
+            primaryFuel: preferences.selectedFuelType,
             limit: 100
         )
         visibleStations = summary.visibleStations
         cachedCheapest = summary.cheapestStation
         cachedAveragePrice = summary.averagePrice
+        cheapestPriceByFuel = summary.cheapestPriceByFuel
+        displayedFuelByStation = summary.displayedFuelByStation
 
         updateWidgetData(location: location)
         recordPriceHistory()

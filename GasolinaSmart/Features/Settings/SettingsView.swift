@@ -1185,41 +1185,45 @@ struct VehicleEditSheet: View {
 
     private var fuelSection: some View {
         Section(loc.fuel) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(pickablePrimaryFuels) { fuel in
-                        let isSelected = fuelType == fuel
-                        Button {
-                            withAnimation(.snappy(duration: 0.2)) { fuelType = fuel }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: fuel.icon)
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text(fuel.displayName(for: preferences.selectedCountry))
-                                    .font(.system(size: 13, weight: .semibold))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                isSelected
-                                    ? Theme.Colors.accent.opacity(0.15)
-                                    : Color(.tertiarySystemFill)
-                            )
-                            .foregroundStyle(
-                                isSelected ? Theme.Colors.accent : Color(.label)
-                            )
-                            .clipShape(Capsule())
-                            .overlay(
-                                Capsule()
-                                    .stroke(isSelected ? Theme.Colors.accent : .clear, lineWidth: 1.5)
-                            )
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
+                spacing: 10
+            ) {
+                ForEach(pickablePrimaryFuels) { fuel in
+                    let isSelected = fuelType == fuel
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) { fuelType = fuel }
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: fuel.icon)
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundStyle(isSelected ? Theme.Colors.accent : Color(.secondaryLabel))
+                            Text(fuel.displayName(for: preferences.selectedCountry))
+                                .font(.system(size: 13, weight: isSelected ? .bold : .semibold))
+                                .foregroundStyle(isSelected ? Theme.Colors.accent : Color(.label))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
-                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            isSelected
+                                ? Theme.Colors.accent.opacity(0.12)
+                                : Color(.tertiarySystemFill)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(isSelected ? Theme.Colors.accent : .clear, lineWidth: 2)
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.vertical, 4)
             }
+            .padding(.vertical, 4)
             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+            .listRowBackground(Color.clear)
 
             Toggle(isOn: $hasGLP) {
                 VStack(alignment: .leading, spacing: 2) {

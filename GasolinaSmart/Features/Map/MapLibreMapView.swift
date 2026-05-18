@@ -38,7 +38,13 @@ struct MapLibreMapView: UIViewRepresentable {
     var zoomRadiusCounter: Int
     var isDarkMode: Bool = false
     var selectedFuelType: FuelType = .gasolina95
-    var cheapestPrice: Decimal?
+    /// Per-fuel cheapest price, used for "near-cheapest" tinting on each
+    /// marker (each station is tinted relative to the cheapest price of the
+    /// fuel its own marker displays — not just the primary fuel).
+    var cheapestPriceByFuel: [FuelType: Decimal] = [:]
+    /// For each visible station, which fuel its marker should show.
+    /// Stations without an entry default to `selectedFuelType`.
+    var displayedFuelByStation: [String: FuelType] = [:]
     var onUserMovedMap: ((VisibleMapArea) -> Void)?
     // When true, skip programmatic camera fits (cheapest-changed, initial fit, etc.).
     // Used after 'Buscar en esta zona' so the map keeps the user's pan/zoom.
@@ -322,14 +328,23 @@ struct MapLibreMapView: UIViewRepresentable {
 
         // MARK: - Price Helpers
 
+        private func displayedFuel(for station: FuelStation) -> FuelType {
+            parent.displayedFuelByStation[station.id] ?? parent.selectedFuelType
+        }
+
         private func priceText(for station: FuelStation) -> String? {
-            guard let price = station.price(for: parent.selectedFuelType) else { return nil }
+            let fuel = displayedFuel(for: station)
+            guard let price = station.price(for: fuel) else { return nil }
             return price.priceFormatted
         }
 
         private func priceTier(for station: FuelStation) -> PriceTier {
-            guard let cheapest = parent.cheapestPrice,
-                  let price = station.price(for: parent.selectedFuelType),
+            // Each fuel has its own "cheapest" so we tint per-fuel: a GLP
+            // station near the cheapest GLP is tinted green, but it isn't
+            // compared against the cheapest G95 (very different price scales).
+            let fuel = displayedFuel(for: station)
+            guard let cheapest = parent.cheapestPriceByFuel[fuel],
+                  let price = station.price(for: fuel),
                   station.id != parent.cheapestId else { return .normal }
             let ratio = NSDecimalNumber(decimal: price / cheapest).doubleValue
             return ratio <= MapLibreMapView.nearCheapestThreshold ? .nearCheapest : .normal

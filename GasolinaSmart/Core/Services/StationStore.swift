@@ -17,8 +17,17 @@ final class StationStore {
 
     struct NearbyFuelSummary {
         let visibleStations: [FuelStation]
+        /// The cheapest station for the user's *primary* fuel (the one shown in
+        /// the vehicle pill and used by the radar / cheapest pin).
         let cheapestStation: FuelStation?
+        /// Average price for the primary fuel only.
         let averagePrice: Decimal?
+        /// Cheapest price *per fuel* — used by per-fuel "near-cheapest" tinting.
+        let cheapestPriceByFuel: [FuelType: Decimal]
+        /// For each visible station, the fuel its marker should display.
+        /// Prefers the primary fuel when the station has it; otherwise picks
+        /// whichever other fuel from the requested set the station carries.
+        let displayedFuelByStation: [String: FuelType]
     }
 
     func loadCacheImmediately() async {
@@ -175,17 +184,67 @@ final class StationStore {
         fuelType: FuelType,
         limit: Int? = nil
     ) -> NearbyFuelSummary {
+        nearbySummary(
+            location: location,
+            radiusKm: radiusKm,
+            fuelTypes: [fuelType],
+            primaryFuel: fuelType,
+            limit: limit
+        )
+    }
+
+    /// Multi-fuel filter used by dual-fuel vehicles (e.g. GLP cars that also
+    /// run on gasoline). A station is visible if it carries *any* of the
+    /// `fuelTypes` requested. The summary's `cheapestStation` / `averagePrice`
+    /// still refer to `primaryFuel` only — that's what the radar / cheapest
+    /// pin / vehicle pill represent.
+    func nearbySummary(
+        location: CLLocation,
+        radiusKm: Double,
+        fuelTypes: Set<FuelType>,
+        primaryFuel: FuelType,
+        limit: Int? = nil
+    ) -> NearbyFuelSummary {
         let radiusM = radiusKm * 1000
         let origin = location.coordinate
+        let fuels = fuelTypes.isEmpty ? [primaryFuel] : fuelTypes
 
-        var matches: [(station: FuelStation, distance: Double, price: Decimal)] = []
+        struct Match {
+            let station: FuelStation
+            let distance: Double
+            let displayedFuel: FuelType
+            let displayedPrice: Decimal
+        }
+
+        var matches: [Match] = []
         matches.reserveCapacity(allStations.count)
 
         for station in allStations {
-            guard let price = station.price(for: fuelType) else { continue }
             let distance = station.distanceMeters(from: origin)
             guard distance <= radiusM else { continue }
-            matches.append((station, distance, price))
+
+            // Prefer the user's primary fuel at this station; fall back to any
+            // other fuel from the requested set if the station only has those.
+            if let price = station.price(for: primaryFuel) {
+                matches.append(Match(
+                    station: station,
+                    distance: distance,
+                    displayedFuel: primaryFuel,
+                    displayedPrice: price
+                ))
+                continue
+            }
+            for fuel in fuels where fuel != primaryFuel {
+                if let price = station.price(for: fuel) {
+                    matches.append(Match(
+                        station: station,
+                        distance: distance,
+                        displayedFuel: fuel,
+                        displayedPrice: price
+                    ))
+                    break
+                }
+            }
         }
 
         matches.sort { $0.distance < $1.distance }
@@ -194,25 +253,41 @@ final class StationStore {
         }
 
         let visibleStations = matches.map(\.station)
-        let cheapestStation = matches.min { $0.price < $1.price }?.station
+
+        // Cheapest station + average price are computed for the primary fuel only.
+        let primaryMatches = matches.filter { $0.displayedFuel == primaryFuel }
+        let cheapestStation = primaryMatches.min { $0.displayedPrice < $1.displayedPrice }?.station
+
         let averagePrice: Decimal?
-        if matches.isEmpty {
+        if primaryMatches.isEmpty {
             averagePrice = cachedAveragePrice
         } else {
-            averagePrice = matches.map(\.price).reduce(Decimal.zero, +) / Decimal(matches.count)
+            averagePrice = primaryMatches.map(\.displayedPrice).reduce(Decimal.zero, +)
+                / Decimal(primaryMatches.count)
+        }
+
+        var cheapestPriceByFuel: [FuelType: Decimal] = [:]
+        var displayedFuelByStation: [String: FuelType] = [:]
+        for match in matches {
+            displayedFuelByStation[match.station.id] = match.displayedFuel
+            if let current = cheapestPriceByFuel[match.displayedFuel] {
+                if match.displayedPrice < current {
+                    cheapestPriceByFuel[match.displayedFuel] = match.displayedPrice
+                }
+            } else {
+                cheapestPriceByFuel[match.displayedFuel] = match.displayedPrice
+            }
         }
 
         return NearbyFuelSummary(
             visibleStations: visibleStations,
             cheapestStation: cheapestStation,
-            averagePrice: averagePrice
+            averagePrice: averagePrice,
+            cheapestPriceByFuel: cheapestPriceByFuel,
+            displayedFuelByStation: displayedFuelByStation
         )
     }
 
-    // Bounds-based filter for the "Search in this area" feature. When the user
-    // pans the map and asks to search what's in view, we filter locally-loaded
-    // stations by lat/lon bounds. If there are more than `limit` matches, we
-    // keep the cheapest ones — that's what makes a zoomed-out search useful.
     func areaSummary(
         minLatitude: Double,
         maxLatitude: Double,
@@ -221,33 +296,90 @@ final class StationStore {
         fuelType: FuelType,
         limit: Int = 30
     ) -> NearbyFuelSummary {
-        var matches: [(station: FuelStation, price: Decimal)] = []
+        areaSummary(
+            minLatitude: minLatitude,
+            maxLatitude: maxLatitude,
+            minLongitude: minLongitude,
+            maxLongitude: maxLongitude,
+            fuelTypes: [fuelType],
+            primaryFuel: fuelType,
+            limit: limit
+        )
+    }
+
+    // Bounds-based filter for the "Search in this area" feature. Multi-fuel
+    // version: a station qualifies if it has any of `fuelTypes`. If more
+    // than `limit` stations qualify, we keep the cheapest ones (by the
+    // displayed fuel of each station) so the map stays readable.
+    func areaSummary(
+        minLatitude: Double,
+        maxLatitude: Double,
+        minLongitude: Double,
+        maxLongitude: Double,
+        fuelTypes: Set<FuelType>,
+        primaryFuel: FuelType,
+        limit: Int = 30
+    ) -> NearbyFuelSummary {
+        let fuels = fuelTypes.isEmpty ? [primaryFuel] : fuelTypes
+
+        struct Match {
+            let station: FuelStation
+            let displayedFuel: FuelType
+            let displayedPrice: Decimal
+        }
+
+        var matches: [Match] = []
         matches.reserveCapacity(allStations.count)
 
         for station in allStations {
-            guard let price = station.price(for: fuelType) else { continue }
             guard station.latitude >= minLatitude,
                   station.latitude <= maxLatitude,
                   station.longitude >= minLongitude,
                   station.longitude <= maxLongitude else { continue }
-            matches.append((station, price))
+
+            if let price = station.price(for: primaryFuel) {
+                matches.append(Match(station: station, displayedFuel: primaryFuel, displayedPrice: price))
+                continue
+            }
+            for fuel in fuels where fuel != primaryFuel {
+                if let price = station.price(for: fuel) {
+                    matches.append(Match(station: station, displayedFuel: fuel, displayedPrice: price))
+                    break
+                }
+            }
         }
 
         if matches.count > limit {
-            matches.sort { $0.price < $1.price }
+            matches.sort { $0.displayedPrice < $1.displayedPrice }
             matches = Array(matches.prefix(limit))
         }
 
         let visibleStations = matches.map(\.station)
-        let cheapestStation = matches.min { $0.price < $1.price }?.station
-        let averagePrice: Decimal? = matches.isEmpty
+        let primaryMatches = matches.filter { $0.displayedFuel == primaryFuel }
+        let cheapestStation = primaryMatches.min { $0.displayedPrice < $1.displayedPrice }?.station
+        let averagePrice: Decimal? = primaryMatches.isEmpty
             ? nil
-            : matches.map(\.price).reduce(Decimal.zero, +) / Decimal(matches.count)
+            : primaryMatches.map(\.displayedPrice).reduce(Decimal.zero, +) / Decimal(primaryMatches.count)
+
+        var cheapestPriceByFuel: [FuelType: Decimal] = [:]
+        var displayedFuelByStation: [String: FuelType] = [:]
+        for match in matches {
+            displayedFuelByStation[match.station.id] = match.displayedFuel
+            if let current = cheapestPriceByFuel[match.displayedFuel] {
+                if match.displayedPrice < current {
+                    cheapestPriceByFuel[match.displayedFuel] = match.displayedPrice
+                }
+            } else {
+                cheapestPriceByFuel[match.displayedFuel] = match.displayedPrice
+            }
+        }
 
         return NearbyFuelSummary(
             visibleStations: visibleStations,
             cheapestStation: cheapestStation,
-            averagePrice: averagePrice
+            averagePrice: averagePrice,
+            cheapestPriceByFuel: cheapestPriceByFuel,
+            displayedFuelByStation: displayedFuelByStation
         )
     }
 
