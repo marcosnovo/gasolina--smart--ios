@@ -7,10 +7,55 @@ import type { ChargingStationInput, ChargingConnectionInput } from "../database"
 // as the OPENCHARGEMAP_API_KEY worker secret.
 const API_URL = "https://api.openchargemap.io/v3/poi/";
 
-// OCM caps maxresults per call. We page through with `offset` since some
-// countries (Spain, France, Germany) have well over 10k stations.
+// OCM's free tier hard-caps results at 5000 per request and does not honour
+// `offset` for true pagination. To cover whole countries we partition each
+// country into bounding boxes and request up to 5000 stations per box —
+// 4 quadrants × 5000 = 20k stations max per country, well above the real
+// totals (Spain ~25k including private chargers, but ~12k are publicly
+// listed on OCM).
 const PAGE_SIZE = 5000;
-const MAX_PAGES = 6;
+
+interface BBox {
+  minLat: number;
+  maxLat: number;
+  minLon: number;
+  maxLon: number;
+  label: string;
+}
+
+const COUNTRY_BBOXES: Record<string, BBox[]> = {
+  ES: [
+    // Excludes Canarias deliberately; OCM coverage there is minimal and the
+    // wider box would dilute results.
+    { minLat: 27.5, maxLat: 38.5, minLon: -10, maxLon: -3, label: "ES-SW" },
+    { minLat: 27.5, maxLat: 38.5, minLon: -3, maxLon: 4.4, label: "ES-SE" },
+    { minLat: 38.5, maxLat: 43.8, minLon: -10, maxLon: -3, label: "ES-NW" },
+    { minLat: 38.5, maxLat: 43.8, minLon: -3, maxLon: 4.4, label: "ES-NE" },
+  ],
+  FR: [
+    { minLat: 41.3, maxLat: 46.5, minLon: -5.2, maxLon: 2.5, label: "FR-SW" },
+    { minLat: 41.3, maxLat: 46.5, minLon: 2.5, maxLon: 9.6, label: "FR-SE" },
+    { minLat: 46.5, maxLat: 51.1, minLon: -5.2, maxLon: 2.5, label: "FR-NW" },
+    { minLat: 46.5, maxLat: 51.1, minLon: 2.5, maxLon: 9.6, label: "FR-NE" },
+  ],
+  GB: [
+    { minLat: 49.9, maxLat: 53.5, minLon: -8.2, maxLon: -3, label: "GB-SW" },
+    { minLat: 49.9, maxLat: 53.5, minLon: -3, maxLon: 1.8, label: "GB-SE" },
+    { minLat: 53.5, maxLat: 60.9, minLon: -8.2, maxLon: -3, label: "GB-NW" },
+    { minLat: 53.5, maxLat: 60.9, minLon: -3, maxLon: 1.8, label: "GB-NE" },
+  ],
+  DE: [
+    { minLat: 47.3, maxLat: 51.2, minLon: 5.9, maxLon: 10.5, label: "DE-SW" },
+    { minLat: 47.3, maxLat: 51.2, minLon: 10.5, maxLon: 15, label: "DE-SE" },
+    { minLat: 51.2, maxLat: 55.1, minLon: 5.9, maxLon: 10.5, label: "DE-NW" },
+    { minLat: 51.2, maxLat: 55.1, minLon: 10.5, maxLon: 15, label: "DE-NE" },
+  ],
+  IT: [
+    { minLat: 35.5, maxLat: 41.5, minLon: 6.6, maxLon: 18.5, label: "IT-S" },
+    { minLat: 41.5, maxLat: 44.5, minLon: 6.6, maxLon: 18.5, label: "IT-C" },
+    { minLat: 44.5, maxLat: 47.1, minLon: 6.6, maxLon: 18.5, label: "IT-N" },
+  ],
+};
 
 interface OCMConnection {
   ConnectionTypeID?: number;
@@ -56,15 +101,19 @@ function ocmCountryCode(country: string): string {
   return country;
 }
 
-async function fetchOnePage(
+async function fetchBoundingBox(
   countryCode: string,
-  offset: number,
+  bbox: BBox,
   apiKey: string
 ): Promise<OCMPoi[]> {
   const url = new URL(API_URL);
   url.searchParams.set("countrycode", countryCode);
   url.searchParams.set("maxresults", String(PAGE_SIZE));
-  url.searchParams.set("offset", String(offset));
+  // OCM accepts boundingbox as "(lat,lon),(lat,lon)" — bottom-left, top-right.
+  url.searchParams.set(
+    "boundingbox",
+    `(${bbox.minLat},${bbox.minLon}),(${bbox.maxLat},${bbox.maxLon})`
+  );
   url.searchParams.set("compact", "true");
   url.searchParams.set("verbose", "false");
   url.searchParams.set("output", "json");
@@ -150,21 +199,25 @@ export async function fetchOpenChargeMap(
   const seen = new Set<string>();
   const stations: ChargingStationInput[] = [];
 
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const offset = page * PAGE_SIZE;
-    const pois = await fetchOnePage(code, offset, apiKey);
-    console.log(`[fetcher:EV:${country}] page ${page + 1}: +${pois.length} raw POIs`);
-    if (pois.length === 0) break;
+  const bboxes = COUNTRY_BBOXES[code];
+  if (!bboxes) {
+    throw new Error(`No bounding boxes defined for country ${code}`);
+  }
 
+  for (const bbox of bboxes) {
+    const pois = await fetchBoundingBox(code, bbox, apiKey);
+    console.log(`[fetcher:EV:${country}] ${bbox.label}: +${pois.length} raw POIs`);
+
+    let added = 0;
     for (const poi of pois) {
       const mapped = mapPoi(poi, country);
       if (!mapped) continue;
       if (seen.has(mapped.id)) continue;
       seen.add(mapped.id);
       stations.push(mapped);
+      added++;
     }
-
-    if (pois.length < PAGE_SIZE) break;
+    console.log(`[fetcher:EV:${country}] ${bbox.label}: +${added} new (deduped)`);
   }
 
   if (stations.length > 0) {
