@@ -573,13 +573,15 @@ struct MapView: View {
             displayedFuelByStation = [:]
             visibleChargingStations = summary.visibleStations
         } else {
+            // The fuel pill acts as a strict filter: only stations selling
+            // the currently-selected fuel are visible. Dual-fuel vehicles
+            // cycle the pill (G95 ↔ GLP) and the map swaps the dataset.
             let summary = store.areaSummary(
                 minLatitude: area.minLatitude,
                 maxLatitude: area.maxLatitude,
                 minLongitude: area.minLongitude,
                 maxLongitude: area.maxLongitude,
-                fuelTypes: Set(preferences.vehicleSupportedFuels),
-                primaryFuel: preferences.selectedFuelType,
+                fuelType: preferences.selectedFuelType,
                 limit: 30
             )
             visibleStations = summary.visibleStations
@@ -875,11 +877,13 @@ struct MapView: View {
             displayedFuelByStation = [:]
             return
         }
+        // Strict fuel filter: only stations selling the active fuel.
+        // For dual-fuel vehicles (G95 + GLP), the pill swaps between fuels
+        // and the map swaps the visible dataset accordingly.
         let summary = store.nearbySummary(
             location: location,
             radiusKm: preferences.preferredRadiusKm,
-            fuelTypes: Set(preferences.vehicleSupportedFuels),
-            primaryFuel: preferences.selectedFuelType,
+            fuelType: preferences.selectedFuelType,
             limit: 100
         )
         visibleStations = summary.visibleStations
