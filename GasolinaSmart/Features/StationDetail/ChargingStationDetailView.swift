@@ -18,10 +18,11 @@ struct ChargingStationDetailView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 0) {
+                VStack(spacing: 12) {
                     heroSection
-                    connectionsCard
-                    infoRows
+                    priceCard
+                    connectorsCard
+                    infoCard
                     navigateButton
                 }
                 .padding(.bottom, 32)
@@ -31,56 +32,156 @@ struct ChargingStationDetailView: View {
         }
     }
 
+    // MARK: - Hero
+
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
                         .fill(Theme.Colors.charging)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 48, height: 48)
                     Image(systemName: "bolt.fill")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.white)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(station.operatorName)
+                    Text(station.operatorName.isEmpty ? station.name : station.operatorName)
                         .font(.system(size: 24, weight: .bold))
                         .tracking(-0.3)
-                    Text(loc.chargingSpeedLabel(station.speedCategory))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.charging)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(speedColor)
+                            .frame(width: 7, height: 7)
+                        Text(loc.chargingSpeedLabel(station.speedCategory))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(speedColor)
+                        if !station.isOperational {
+                            Text("·")
+                                .foregroundStyle(Color(.quaternaryLabel))
+                            Text("Fuera de servicio")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
             }
 
-            Text(station.name)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color(.secondaryLabel))
-                .padding(.top, 4)
-
-            HStack(spacing: 6) {
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.Colors.charging)
-                Text(station.address)
+            if !station.name.isEmpty && station.name != station.operatorName {
+                Text(station.name)
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color(.secondaryLabel))
-                if let distance {
-                    Text("·")
-                        .foregroundStyle(Color(.quaternaryLabel))
-                    Text(distance.distanceFormatted)
-                        .foregroundStyle(Theme.Colors.charging)
-                        .fontWeight(.semibold)
-                }
+                    .padding(.top, 4)
             }
-            .font(.system(size: 13, weight: .medium))
+
+            if !station.address.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.Colors.charging)
+                    Text(station.address)
+                        .foregroundStyle(Color(.secondaryLabel))
+                    if let distance {
+                        Text("·")
+                            .foregroundStyle(Color(.quaternaryLabel))
+                        Text(distance.distanceFormatted)
+                            .foregroundStyle(Theme.Colors.charging)
+                            .fontWeight(.semibold)
+                    }
+                }
+                .font(.system(size: 13, weight: .medium))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
         .padding(.top, 20)
-        .padding(.bottom, 16)
     }
 
-    private var connectionsCard: some View {
+    // MARK: - Price + power highlight
+
+    @ViewBuilder
+    private var priceCard: some View {
+        HStack(spacing: 12) {
+            priceTile
+            powerTile
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var priceTile: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Precio")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .tracking(0.8)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if station.isFree {
+                    Text("Gratis")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(red: 0.10, green: 0.55, blue: 0.20))
+                } else if let price = station.pricePerKWh {
+                    Text(price.priceFormatted)
+                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Color(.label))
+                    Text("€/kWh")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(.secondaryLabel))
+                } else {
+                    Text("—")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                    Text("sin datos")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+            }
+            if let cost = station.usageCost, !station.isFree, station.pricePerKWh == nil {
+                Text(cost)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var powerTile: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Potencia máx.")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color(.tertiaryLabel))
+                .tracking(0.8)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if let maxPower = station.maxPowerKW {
+                    Text("\(Int(maxPower.rounded()))")
+                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Theme.Colors.charging)
+                    Text("kW")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(.secondaryLabel))
+                } else {
+                    Text("—")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+            }
+            Text(loc.chargingPointCount(station.numberOfPoints))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // MARK: - Connectors
+
+    private var connectorsCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(loc.chargingConnectors)
                 .font(.system(size: 11, weight: .bold))
@@ -88,87 +189,80 @@ struct ChargingStationDetailView: View {
                 .tracking(1)
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
-                .padding(.bottom, 8)
+                .padding(.bottom, 10)
 
-            ForEach(Array(station.connections.enumerated()), id: \.offset) { index, conn in
-                VStack(spacing: 0) {
-                    HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Theme.Colors.charging.opacity(isDark ? 0.15 : 0.08))
-                                .frame(width: 28, height: 28)
-                            Image(systemName: "ev.plug.dc.ccs1")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Theme.Colors.charging)
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(conn.typeName)
-                                .font(.system(size: 14, weight: .semibold))
-                            if let qty = conn.quantity, qty > 1 {
-                                Text(loc.chargingPointCount(qty))
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color(.tertiaryLabel))
-                            }
-                        }
-
-                        Spacer()
-
-                        if let power = conn.powerKW {
-                            Text("\(Int(power)) kW")
-                                .font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
-                                .foregroundStyle(Theme.Colors.charging)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-
-                    if index < station.connections.count - 1 {
-                        Divider()
-                            .padding(.leading, 54)
-                    }
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
+                spacing: 10
+            ) {
+                ForEach(Array(station.connections.enumerated()), id: \.offset) { _, conn in
+                    connectorTile(conn)
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 14)
         }
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
-        .padding(.bottom, 12)
     }
 
-    private var infoRows: some View {
+    private func connectorTile(_ conn: ChargingConnection) -> some View {
+        let visual = ConnectorVisual.from(typeName: conn.typeName)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(visual.color.opacity(isDark ? 0.25 : 0.15))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: visual.symbol)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(visual.color)
+                }
+                Spacer()
+                if let power = conn.powerKW {
+                    HStack(spacing: 2) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("\(Int(power)) kW")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(visual.color)
+                    .clipShape(Capsule())
+                }
+            }
+
+            Text(visual.shortName)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Color(.label))
+                .lineLimit(1)
+
+            if let qty = conn.quantity, qty > 1 {
+                Text(loc.chargingPointCount(qty))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Info
+
+    private var infoCard: some View {
         VStack(spacing: 0) {
-            infoRow(
-                icon: "number",
-                label: loc.chargingPoints,
-                value: "\(station.numberOfPoints)",
-                valueColor: Theme.Colors.charging
-            )
-
-            if let maxPower = station.maxPowerKW {
-                infoRow(
-                    icon: "bolt.fill",
-                    label: loc.chargingMaxPower,
-                    value: "\(Int(maxPower)) kW",
-                    valueColor: Theme.Colors.charging
-                )
-            }
-
-            if let cost = station.usageCost, !cost.isEmpty {
-                infoRow(
-                    icon: "eurosign.circle.fill",
-                    label: loc.chargingCost,
-                    value: cost,
-                    valueColor: nil
-                )
-            }
-
             if !station.town.isEmpty {
                 infoRow(
                     icon: "building.2.fill",
                     label: loc.chargingMunicipality,
                     value: station.town,
-                    valueColor: nil
+                    valueColor: nil,
+                    isLast: distance == nil
                 )
             }
 
@@ -185,7 +279,6 @@ struct ChargingStationDetailView: View {
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
-        .padding(.bottom, 12)
     }
 
     private func infoRow(icon: String, label: String, value: String, valueColor: Color?, isLast: Bool = false) -> some View {
@@ -221,6 +314,17 @@ struct ChargingStationDetailView: View {
         }
     }
 
+    // MARK: - Helpers
+
+    private var speedColor: Color {
+        switch station.speedCategory {
+        case .fast: Color(red: 0.10, green: 0.55, blue: 0.20)
+        case .semiFast: Color(red: 0.85, green: 0.55, blue: 0.10)
+        case .slow: Color(red: 0.55, green: 0.55, blue: 0.55)
+        case .unknown: Color(.secondaryLabel)
+        }
+    }
+
     private var navigateButton: some View {
         Button {
             let coordinate = station.coordinate
@@ -246,5 +350,43 @@ struct ChargingStationDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
+    }
+}
+
+/// Maps an OpenChargeMap connector typeName to an SF Symbol and brand colour
+/// so the connector grid is glanceable. Falls back to a neutral plug when the
+/// type isn't recognised — better than showing the same generic icon for all.
+private struct ConnectorVisual {
+    let symbol: String
+    let color: Color
+    let shortName: String
+
+    static func from(typeName raw: String) -> ConnectorVisual {
+        let name = raw.lowercased()
+        if name.contains("ccs") {
+            return .init(symbol: "ev.plug.dc.ccs2", color: Color(red: 0.20, green: 0.45, blue: 0.85), shortName: "CCS")
+        }
+        if name.contains("chademo") {
+            return .init(symbol: "ev.plug.dc.chademo", color: Color(red: 0.85, green: 0.45, blue: 0.10), shortName: "CHAdeMO")
+        }
+        if name.contains("nacs") || name.contains("j3400") {
+            return .init(symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20), shortName: "NACS")
+        }
+        if name.contains("tesla") {
+            return .init(symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20), shortName: "Tesla")
+        }
+        if name.contains("type 2") || name.contains("mennekes") || name.contains("iec 62196-2") {
+            return .init(symbol: "ev.plug.ac.type2", color: Color(red: 0.10, green: 0.55, blue: 0.20), shortName: "Type 2")
+        }
+        if name.contains("type 1") || name.contains("j1772") {
+            return .init(symbol: "ev.plug.ac.gb.t", color: Color(red: 0.60, green: 0.30, blue: 0.70), shortName: "Type 1")
+        }
+        if name.contains("schuko") || name.contains("domestic") {
+            return .init(symbol: "powerplug.fill", color: Color(red: 0.40, green: 0.40, blue: 0.40), shortName: "Schuko")
+        }
+        if name.contains("cee") {
+            return .init(symbol: "powerplug.fill", color: Color(red: 0.85, green: 0.55, blue: 0.10), shortName: "CEE")
+        }
+        return .init(symbol: "powerplug.fill", color: Color(.secondaryLabel), shortName: raw)
     }
 }
