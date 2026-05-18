@@ -13,6 +13,9 @@ import {
 import { COUNTRY_INFO, SUPPORTED_COUNTRIES } from "./countries";
 import { fetchSpain } from "./fetchers/spain";
 import { fetchFrance } from "./fetchers/france";
+import { fetchUK } from "./fetchers/uk";
+import { fetchGermany } from "./fetchers/germany";
+import { fetchItaly } from "./fetchers/italy";
 
 export interface Env {
   DB: D1Database;
@@ -194,8 +197,17 @@ app.post("/api/fetch", async (c) => {
       case "FR":
         result = await fetchFrance(c.env.DB);
         break;
+      case "GB":
+        result = await fetchUK(c.env.DB);
+        break;
+      case "DE":
+        result = await fetchGermany(c.env.DB, c.env.TANKERKOENIG_API_KEY);
+        break;
+      case "IT":
+        result = await fetchItaly(c.env.DB);
+        break;
       default:
-        return c.json({ success: false, error: `Country ${country} not yet ported` }, 400);
+        return c.json({ success: false, error: `Unknown country: ${country}` }, 400);
     }
 
     await setCountryMetaValue(c.env.DB, country, "last_error", "");
