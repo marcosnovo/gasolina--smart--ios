@@ -105,4 +105,47 @@ final class ChargingStationStore {
             .map(\.0)
         return Array(sorted)
     }
+
+    struct ChargingSummary {
+        let visibleStations: [ChargingStation]
+        let cheapestStation: ChargingStation?
+        let averagePricePerKWh: Decimal?
+    }
+
+    /// EV equivalent of StationStore.nearbySummary. The "cheapest" is the
+    /// station with the lowest parsed €/kWh among nearby stations; if no
+    /// nearby station advertises a price, falls back to the fastest charger.
+    func nearbySummary(location: CLLocation, radiusKm: Double, limit: Int = 100) -> ChargingSummary {
+        let radiusM = radiusKm * 1000
+        let origin = location.coordinate
+
+        let nearby = stations
+            .compactMap { s -> (station: ChargingStation, distance: Double)? in
+                guard s.isOperational else { return nil }
+                let d = s.distanceKm(from: origin) * 1000
+                guard d <= radiusM else { return nil }
+                return (s, d)
+            }
+            .sorted { $0.distance < $1.distance }
+            .prefix(limit)
+
+        let visible = nearby.map(\.station)
+        let priced = visible.compactMap { s -> (ChargingStation, Decimal)? in
+            guard let price = s.pricePerKWh else { return nil }
+            return (s, price)
+        }
+
+        let cheapest = priced.min(by: { $0.1 < $1.1 })?.0
+            ?? visible.max(by: { ($0.maxPowerKW ?? 0) < ($1.maxPowerKW ?? 0) })
+
+        let avg: Decimal? = priced.isEmpty
+            ? nil
+            : priced.map(\.1).reduce(Decimal.zero, +) / Decimal(priced.count)
+
+        return ChargingSummary(
+            visibleStations: visible,
+            cheapestStation: cheapest,
+            averagePricePerKWh: avg
+        )
+    }
 }

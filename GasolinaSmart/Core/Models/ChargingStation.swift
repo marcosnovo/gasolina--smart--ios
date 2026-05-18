@@ -60,6 +60,49 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
         return types.joined(separator: ", ")
     }
 
+    /// Parsed price per kWh extracted from the free-text `usageCost` (e.g.
+    /// "0.35€/kWh", "0,30 €/kWh + 0,05€/min"). Returns nil if the string
+    /// doesn't contain a recognisable per-kWh price.
+    var pricePerKWh: Decimal? {
+        guard let cost = usageCost else { return nil }
+        return ChargingStation.parseCostPerKWh(cost)
+    }
+
+    /// Treats "Gratuito" / "Free" / "Libre" usage costs as a real "0 €/kWh"
+    /// signal so the UI can show a green Free badge.
+    var isFree: Bool {
+        guard let cost = usageCost?.lowercased() else { return false }
+        return cost.contains("gratu") || cost.contains("free") || cost.contains("libre") || cost == "0"
+    }
+
+    static func parseCostPerKWh(_ raw: String) -> Decimal? {
+        // Matches "0.35", "0,35", "0.35 €", "0,35 €/kWh", "EUR 0.35/kWh", etc.
+        // Conservative: only returns a value when a kWh unit is mentioned.
+        let lowered = raw.lowercased()
+        guard lowered.contains("kwh") || lowered.contains("kw·h") || lowered.contains("kw-h") else {
+            return nil
+        }
+
+        let pattern = #"(\d+[.,]?\d*)\s*[€$£eur]*\s*[/x ]+\s*kw\s*[h·\-]?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let nsString = raw as NSString
+        let range = NSRange(location: 0, length: nsString.length)
+        guard let match = regex.firstMatch(in: raw, options: [], range: range),
+              match.numberOfRanges > 1 else {
+            return nil
+        }
+        let numericRange = match.range(at: 1)
+        guard numericRange.location != NSNotFound else { return nil }
+        let numberString = nsString.substring(with: numericRange)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let decimal = Decimal(string: numberString), decimal > 0, decimal < 5 else {
+            return nil
+        }
+        return decimal
+    }
+
     enum SpeedCategory {
         case fast, semiFast, slow, unknown
 

@@ -52,4 +52,9 @@ enum NavigationHelper {
         let url = navigationURL(latitude: station.latitude, longitude: station.longitude, app: app)
         UIApplication.shared.open(url)
     }
+
+    static func openCharging(station: ChargingStation, app: PreferredNavigationApp) {
+        let url = navigationURL(latitude: station.latitude, longitude: station.longitude, app: app)
+        UIApplication.shared.open(url)
+    }
 }

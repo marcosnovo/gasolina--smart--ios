@@ -296,11 +296,13 @@ struct MapLibreMapView: UIViewRepresentable {
                 return UserLocationDotView()
             }
 
-            if annotation is ChargingPointAnnotation {
-                let reuseId = "charging_pin"
-                let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) as? LightPinView
-                    ?? LightPinView(reuseIdentifier: reuseId)
-                view.configure(image: LightPinView.chargingImage)
+            if let chargingAnn = annotation as? ChargingPointAnnotation {
+                let reuseId = "charging_pill"
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) as? ChargingPinView
+                    ?? ChargingPinView(reuseIdentifier: reuseId)
+                if let station = chargingAnn.chargingStation {
+                    view.configure(for: station)
+                }
                 return view
             }
 
@@ -671,6 +673,136 @@ class PricePinView: MLNAnnotationView {
             tailLayer.fillColor = UIColor(red: 0.86, green: 0.96, blue: 0.88, alpha: 1).cgColor
         }
         starBadge.isHidden = !isFavorite
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        layer.zPosition = 0
+    }
+
+    override func setSelected(_ selected: Bool, animated: Bool) {
+        super.setSelected(selected, animated: animated)
+        let t: CGAffineTransform = selected ? .init(scaleX: 1.12, y: 1.12) : .identity
+        if animated {
+            UIView.animate(withDuration: 0.12) { self.transform = t }
+        } else {
+            transform = t
+        }
+    }
+}
+
+// MARK: - Charging Pin (EV — price/kWh or kW pill with bolt icon)
+
+class ChargingPinView: MLNAnnotationView {
+    private let pillBackground = UIView()
+    private let valueLabel = UILabel()
+    private let unitLabel = UILabel()
+    private let boltBadge = UIImageView()
+    private let tailLayer = CAShapeLayer()
+
+    private static let pillWidth: CGFloat = 60
+    private static let pillHeight: CGFloat = 32
+    private static let tailHeight: CGFloat = 6
+    private static let viewWidth: CGFloat = 66
+    private static let viewHeight: CGFloat = 44
+
+    private static let chargingBlue = UIColor(red: 0.20, green: 0.45, blue: 0.85, alpha: 1)
+    private static let fastGreen = UIColor(red: 0.16, green: 0.67, blue: 0.33, alpha: 1)
+
+    private static let boltImage: UIImage? = UIImage(systemName: "bolt.fill",
+        withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))?
+        .withTintColor(.white, renderingMode: .alwaysOriginal)
+
+    override init(reuseIdentifier: String?) {
+        super.init(reuseIdentifier: reuseIdentifier)
+        let w = Self.viewWidth
+        let h = Self.viewHeight
+        frame = CGRect(x: 0, y: 0, width: w, height: h)
+        centerOffset = CGVector(dx: 0, dy: -h / 2)
+        isOpaque = false
+        backgroundColor = .clear
+
+        let pillX = (w - Self.pillWidth) / 2
+        let pillY: CGFloat = 4
+        pillBackground.frame = CGRect(x: pillX, y: pillY, width: Self.pillWidth, height: Self.pillHeight)
+        pillBackground.layer.cornerRadius = Self.pillHeight / 2
+        pillBackground.layer.shadowColor = UIColor.black.cgColor
+        pillBackground.layer.shadowOpacity = 0.22
+        pillBackground.layer.shadowOffset = CGSize(width: 0, height: 1.5)
+        pillBackground.layer.shadowRadius = 2.5
+        pillBackground.layer.shadowPath = UIBezierPath(
+            roundedRect: CGRect(origin: .zero, size: pillBackground.bounds.size),
+            cornerRadius: Self.pillHeight / 2
+        ).cgPath
+        addSubview(pillBackground)
+
+        valueLabel.frame = CGRect(x: 0, y: 3, width: Self.pillWidth, height: 14)
+        valueLabel.textAlignment = .center
+        valueLabel.font = .systemFont(ofSize: 12, weight: .bold)
+        valueLabel.textColor = .white
+        valueLabel.adjustsFontSizeToFitWidth = true
+        valueLabel.minimumScaleFactor = 0.75
+        pillBackground.addSubview(valueLabel)
+
+        unitLabel.frame = CGRect(x: 0, y: 16, width: Self.pillWidth, height: 11)
+        unitLabel.textAlignment = .center
+        unitLabel.font = .systemFont(ofSize: 9, weight: .semibold)
+        unitLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        pillBackground.addSubview(unitLabel)
+
+        let tailW: CGFloat = 9
+        let tailTop = pillY + Self.pillHeight - 1
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: w / 2 - tailW / 2, y: tailTop))
+        path.addLine(to: CGPoint(x: w / 2, y: tailTop + Self.tailHeight))
+        path.addLine(to: CGPoint(x: w / 2 + tailW / 2, y: tailTop))
+        path.close()
+        tailLayer.path = path.cgPath
+        tailLayer.shadowColor = UIColor.black.cgColor
+        tailLayer.shadowOpacity = 0.18
+        tailLayer.shadowOffset = CGSize(width: 0, height: 1.5)
+        tailLayer.shadowRadius = 2
+        layer.insertSublayer(tailLayer, below: pillBackground.layer)
+
+        boltBadge.frame = CGRect(x: pillX - 5, y: pillY - 3, width: 13, height: 13)
+        boltBadge.image = Self.boltImage
+        boltBadge.backgroundColor = Self.fastGreen
+        boltBadge.layer.cornerRadius = 6.5
+        boltBadge.contentMode = .center
+        boltBadge.isHidden = true
+        addSubview(boltBadge)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(for station: ChargingStation) {
+        // Prefer the actual €/kWh price when we can parse it; otherwise fall
+        // back to the max power in kW. "Gratuito" stations get a green pill.
+        if station.isFree {
+            valueLabel.text = "0,00"
+            unitLabel.text = "€/kWh"
+            pillBackground.backgroundColor = Self.fastGreen
+            tailLayer.fillColor = Self.fastGreen.cgColor
+        } else if let price = station.pricePerKWh {
+            valueLabel.text = price.priceFormatted
+            unitLabel.text = "€/kWh"
+            pillBackground.backgroundColor = Self.chargingBlue
+            tailLayer.fillColor = Self.chargingBlue.cgColor
+        } else if let power = station.maxPowerKW {
+            valueLabel.text = String(format: "%g", power.rounded())
+            unitLabel.text = "kW"
+            pillBackground.backgroundColor = Self.chargingBlue
+            tailLayer.fillColor = Self.chargingBlue.cgColor
+        } else {
+            valueLabel.text = "EV"
+            unitLabel.text = ""
+            pillBackground.backgroundColor = Self.chargingBlue
+            tailLayer.fillColor = Self.chargingBlue.cgColor
+        }
+
+        // Badge for fast chargers (>= 50 kW) — quick visual cue while scanning.
+        boltBadge.isHidden = (station.maxPowerKW ?? 0) < 50
     }
 
     override func prepareForReuse() {

@@ -195,9 +195,8 @@ final class StationStore {
 
     /// Multi-fuel filter used by dual-fuel vehicles (e.g. GLP cars that also
     /// run on gasoline). A station is visible if it carries *any* of the
-    /// `fuelTypes` requested. The summary's `cheapestStation` / `averagePrice`
-    /// still refer to `primaryFuel` only — that's what the radar / cheapest
-    /// pin / vehicle pill represent.
+    /// `fuelTypes` requested. An empty `fuelTypes` returns an empty summary
+    /// (used for EV vehicles — they don't want fuel markers at all).
     func nearbySummary(
         location: CLLocation,
         radiusKm: Double,
@@ -205,9 +204,18 @@ final class StationStore {
         primaryFuel: FuelType,
         limit: Int? = nil
     ) -> NearbyFuelSummary {
+        guard !fuelTypes.isEmpty else {
+            return NearbyFuelSummary(
+                visibleStations: [],
+                cheapestStation: nil,
+                averagePrice: nil,
+                cheapestPriceByFuel: [:],
+                displayedFuelByStation: [:]
+            )
+        }
         let radiusM = radiusKm * 1000
         let origin = location.coordinate
-        let fuels = fuelTypes.isEmpty ? [primaryFuel] : fuelTypes
+        let fuels = fuelTypes
 
         struct Match {
             let station: FuelStation
@@ -310,7 +318,8 @@ final class StationStore {
     // Bounds-based filter for the "Search in this area" feature. Multi-fuel
     // version: a station qualifies if it has any of `fuelTypes`. If more
     // than `limit` stations qualify, we keep the cheapest ones (by the
-    // displayed fuel of each station) so the map stays readable.
+    // displayed fuel of each station) so the map stays readable. Empty
+    // `fuelTypes` returns an empty summary (EV vehicles).
     func areaSummary(
         minLatitude: Double,
         maxLatitude: Double,
@@ -320,7 +329,16 @@ final class StationStore {
         primaryFuel: FuelType,
         limit: Int = 30
     ) -> NearbyFuelSummary {
-        let fuels = fuelTypes.isEmpty ? [primaryFuel] : fuelTypes
+        guard !fuelTypes.isEmpty else {
+            return NearbyFuelSummary(
+                visibleStations: [],
+                cheapestStation: nil,
+                averagePrice: nil,
+                cheapestPriceByFuel: [:],
+                displayedFuelByStation: [:]
+            )
+        }
+        let fuels = fuelTypes
 
         struct Match {
             let station: FuelStation

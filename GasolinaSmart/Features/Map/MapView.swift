@@ -302,34 +302,51 @@ struct MapView: View {
             }
             .buttonStyle(.plain)
 
-            // Right zone — fuel chip. For dual-fuel vehicles, tapping cycles
-            // the active primary fuel (GLP ↔ Gasoline) and the cheapest pin /
-            // average follow. Mono-fuel cars get the same chip without an
-            // action (kept for layout consistency).
-            Button {
-                guard isDualFuelVehicle else { return }
-                cycleVisibleFuel()
-            } label: {
+            // Right zone — fuel chip / EV badge.
+            // - Combustion mono-fuel: shows the fuel code, no action.
+            // - Combustion dual-fuel: shows the active fuel + swap icon;
+            //   tapping cycles GLP ↔ Gasoline.
+            // - Electric: shows a bolt + "EV" label; no fuel selection.
+            if preferences.selectedVehicle.isElectric {
                 HStack(spacing: 4) {
-                    Text(preferences.selectedFuelType.shortLabel(for: preferences.selectedCountry))
+                    Image(systemName: "bolt.fill")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Theme.Colors.accent)
+                    Text("EV")
+                        .font(.system(size: 11, weight: .bold))
                         .lineLimit(1)
-                    if isDualFuelVehicle {
-                        Image(systemName: "arrow.left.arrow.right")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(Theme.Colors.accent)
-                    }
                 }
+                .foregroundStyle(Theme.Colors.charging)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Theme.Colors.accent.opacity(isDualFuelVehicle ? 0.14 : 0.08))
+                .background(Theme.Colors.charging.opacity(0.14))
                 .clipShape(Capsule())
                 .padding(.trailing, 6)
-                .contentShape(Rectangle())
+            } else {
+                Button {
+                    guard isDualFuelVehicle else { return }
+                    cycleVisibleFuel()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(preferences.selectedFuelType.shortLabel(for: preferences.selectedCountry))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.Colors.accent)
+                            .lineLimit(1)
+                        if isDualFuelVehicle {
+                            Image(systemName: "arrow.left.arrow.right")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Theme.Colors.accent)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.Colors.accent.opacity(isDualFuelVehicle ? 0.14 : 0.08))
+                    .clipShape(Capsule())
+                    .padding(.trailing, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!isDualFuelVehicle)
             }
-            .buttonStyle(.plain)
-            .disabled(!isDualFuelVehicle)
         }
         .background(topBarCapsuleBackground)
         .overlay(topBarOutline)
@@ -492,49 +509,88 @@ struct MapView: View {
 
     private var bottomContent: some View {
         VStack(spacing: Theme.Spacing.sm) {
-            if let cheapest = cachedCheapest,
-               let location = locationManager.location {
-                RadarPanel(
+            if preferences.selectedVehicle.isElectric {
+                electricBottomContent
+            } else {
+                combustionBottomContent
+            }
+
+            freshnessLabel
+                .padding(.bottom, Theme.Spacing.sm)
+        }
+    }
+
+    @ViewBuilder
+    private var combustionBottomContent: some View {
+        if let cheapest = cachedCheapest,
+           let location = locationManager.location {
+            RadarPanel(
+                station: cheapest,
+                fuelType: preferences.selectedFuelType,
+                averagePrice: cachedAveragePrice,
+                tankLiters: preferences.tankSizeLiters,
+                distance: cheapest.distanceKm(from: location),
+                onTap: {
+                    appState.selectedStation = cheapest
+                    appState.showStationDetail = true
+                },
+                onNavigate: {
+                    if preferences.enabledNavigationApps.count == 1,
+                       let app = preferences.enabledNavigationApps.first {
+                        NavigationHelper.openPreferred(station: cheapest, app: app)
+                    } else {
+                        showNavigationPicker = true
+                    }
+                }
+            )
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+            .padding(.horizontal, Theme.Spacing.md)
+        } else if locationManager.isAuthorized && locationManager.location != nil
+                    && !store.allStations.isEmpty && visibleStations.isEmpty {
+            VStack(spacing: 4) {
+                Text(loc.mapNoStations(Int(preferences.preferredRadiusKm)))
+                    .font(Theme.Fonts.subheadline)
+                    .fontWeight(.medium)
+                Text(loc.mapExpandRadius)
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(Theme.Spacing.md)
+            .frame(maxWidth: .infinity)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
+            .padding(.horizontal, Theme.Spacing.md)
+        }
+    }
+
+    @ViewBuilder
+    private var electricBottomContent: some View {
+        if let location = locationManager.location {
+            let summary = chargingStore.nearbySummary(
+                location: location,
+                radiusKm: preferences.preferredRadiusKm,
+                limit: 200
+            )
+            if let cheapest = summary.cheapestStation {
+                ChargingRadarPanel(
                     station: cheapest,
-                    fuelType: preferences.selectedFuelType,
-                    averagePrice: cachedAveragePrice,
-                    tankLiters: preferences.tankSizeLiters,
+                    averagePricePerKWh: summary.averagePricePerKWh,
                     distance: cheapest.distanceKm(from: location),
-                    onTap: {
-                        appState.selectedStation = cheapest
-                        appState.showStationDetail = true
-                    },
+                    onTap: { selectedChargingStation = cheapest },
                     onNavigate: {
                         if preferences.enabledNavigationApps.count == 1,
                            let app = preferences.enabledNavigationApps.first {
-                            NavigationHelper.openPreferred(station: cheapest, app: app)
+                            NavigationHelper.openCharging(station: cheapest, app: app)
                         } else {
-                            showNavigationPicker = true
+                            NavigationHelper.openCharging(station: cheapest, app: .appleMaps)
                         }
                     }
                 )
                 .background(.regularMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
                 .padding(.horizontal, Theme.Spacing.md)
-            } else if locationManager.isAuthorized && locationManager.location != nil
-                        && !store.allStations.isEmpty && visibleStations.isEmpty {
-                VStack(spacing: 4) {
-                    Text(loc.mapNoStations(Int(preferences.preferredRadiusKm)))
-                        .font(Theme.Fonts.subheadline)
-                        .fontWeight(.medium)
-                    Text(loc.mapExpandRadius)
-                        .font(Theme.Fonts.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(Theme.Spacing.md)
-                .frame(maxWidth: .infinity)
-                .background(.regularMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
-                .padding(.horizontal, Theme.Spacing.md)
             }
-
-            freshnessLabel
-                .padding(.bottom, Theme.Spacing.sm)
         }
     }
 
