@@ -372,12 +372,16 @@ struct SearchView: View {
 
         let fuelType = preferences.selectedFuelType
         let location = locationManager.location
+        // Pre-lowercased corpus computed once when the dataset loaded;
+        // avoids rebuilding and lowercasing the 5-field concatenation for
+        // 11k+ stations on every fallback search.
+        let corpus = store.searchCorpus
 
         return Array(
             store.allStations
                 .filter { station in
                     guard station.price(for: fuelType) != nil else { return false }
-                    let text = "\(station.municipality) \(station.province) \(station.address) \(station.name) \(station.brand)".lowercased()
+                    guard let text = corpus[station.id] else { return false }
                     return words.allSatisfy { text.contains($0) }
                 }
                 .sorted {

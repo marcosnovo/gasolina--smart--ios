@@ -12,8 +12,25 @@ final class StationStore {
     private(set) var isUsingCache = false
     private(set) var cachedAveragePrice: Decimal?
     private(set) var activeCountry: Country = .spain
+    /// Pre-lowercased "name brand municipality province address" indexed by
+    /// station id. Built once per dataset load so the free-text fallback
+    /// search in SearchView doesn't rebuild and lowercase 11k+ strings on
+    /// every keystroke.
+    private(set) var searchCorpus: [String: String] = [:]
     private var loadedRadiusKm: Double = 0
     private var loadGeneration = 0
+
+    private nonisolated static func buildSearchCorpus(
+        from stations: [FuelStation]
+    ) -> [String: String] {
+        var corpus: [String: String] = [:]
+        corpus.reserveCapacity(stations.count)
+        for s in stations {
+            corpus[s.id] = "\(s.municipality) \(s.province) \(s.address) \(s.name) \(s.brand)"
+                .lowercased()
+        }
+        return corpus
+    }
 
     struct NearbyFuelSummary {
         let visibleStations: [FuelStation]
@@ -34,6 +51,7 @@ final class StationStore {
         guard allStations.isEmpty else { return }
         if let cached = await StationCache.shared.getStale(country: activeCountry) {
             allStations = cached
+            searchCorpus = Self.buildSearchCorpus(from: cached)
             lastUpdated = await StationCache.shared.get(country: activeCountry)?.timestamp
             isUsingCache = true
         }
@@ -43,6 +61,7 @@ final class StationStore {
         guard country != activeCountry else { return }
         activeCountry = country
         allStations = []
+        searchCorpus = [:]
         cachedAveragePrice = nil
         lastUpdated = nil
         loadedRadiusKm = 0
@@ -83,12 +102,16 @@ final class StationStore {
         do {
             let response = try await BackendAPIService.shared.fetchAllStations(country: country)
             // Map the 11k+ DTOs to domain models off the main actor — for Spain
-            // this saved ~120 ms of stutter on cold launch.
-            let stations = await Task.detached(priority: .userInitiated) {
-                response.stations.map { $0.toFuelStation() }
+            // this saved ~120 ms of stutter on cold launch. Builds the
+            // lowercased search corpus in the same detached pass so the
+            // SearchView text fallback never has to recompute it.
+            let (stations, corpus) = await Task.detached(priority: .userInitiated) {
+                let s = response.stations.map { $0.toFuelStation() }
+                return (s, Self.buildSearchCorpus(from: s))
             }.value
             guard myGeneration == loadGeneration else { return }
             allStations = stations
+            searchCorpus = corpus
             lastUpdated = Date()
             loadedRadiusKm = .infinity
             isUsingCache = false
@@ -140,6 +163,7 @@ final class StationStore {
             )
             guard myGeneration == loadGeneration else { return }
             allStations = stations
+            searchCorpus = Self.buildSearchCorpus(from: stations)
             lastUpdated = Date()
             loadedRadiusKm = fetchRadius
             isUsingCache = false
