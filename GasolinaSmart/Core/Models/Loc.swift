@@ -43,6 +43,9 @@ struct Loc {
     var name: String { s("Nombre", "Name", "Nom", "Name", "Nome") }
     var namePlaceholder: String { s("Ej: Mi coche", "E.g.: My car", "Ex : Ma voiture", "Z.B.: Mein Auto", "Ex: O meu carro") }
     var fuel: String { s("Combustible", "Fuel", "Carburant", "Kraftstoff", "Combustível") }
+    var fuelPickerVehicleSection: String { s("Tu vehículo", "Your vehicle", "Votre véhicule", "Ihr Fahrzeug", "O seu veículo") }
+    var fuelPickerOtherSection: String { s("Otros combustibles", "Other fuels", "Autres carburants", "Andere Kraftstoffe", "Outros combustíveis") }
+    var fuelPickerDualFuelHint: String { s("Los coches GLP también pueden repostar gasolina.", "GLP cars can also refuel with petrol.", "Les voitures GPL peuvent aussi faire le plein d'essence.", "GLP-Autos können auch Benzin tanken.", "Os carros GPL também podem abastecer com gasolina.") }
 
     // MARK: - Map
 

@@ -6,31 +6,43 @@ struct FuelTypePickerSheet: View {
 
     private var loc: Loc { preferences.loc }
 
-    private var supportedFuels: [FuelType] {
-        preferences.selectedCountry.supportedFuelTypes
+    private var vehicleFuels: [FuelType] {
+        preferences.vehicleSupportedFuels
+    }
+
+    private var otherFuels: [FuelType] {
+        preferences.selectedCountry.supportedFuelTypes.filter { !vehicleFuels.contains($0) }
+    }
+
+    private var isDualFuelVehicle: Bool {
+        vehicleFuels.count > 1
     }
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(supportedFuels) { fuel in
-                    Button {
-                        preferences.selectedFuelType = fuel
-                        dismiss()
-                    } label: {
-                        HStack {
-                            Image(systemName: fuel.icon)
-                                .frame(width: 24)
-                                .foregroundStyle(.blue)
-                            Text(fuel.displayName(for: preferences.selectedCountry))
-                            Spacer()
-                            if preferences.selectedFuelType == fuel {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.blue)
-                            }
-                        }
+                Section {
+                    ForEach(vehicleFuels) { fuel in
+                        fuelRow(fuel)
                     }
-                    .buttonStyle(.plain)
+                } header: {
+                    if isDualFuelVehicle {
+                        Text(loc.fuelPickerVehicleSection)
+                    }
+                } footer: {
+                    if isDualFuelVehicle {
+                        Text(loc.fuelPickerDualFuelHint)
+                    }
+                }
+
+                if !otherFuels.isEmpty {
+                    Section {
+                        ForEach(otherFuels) { fuel in
+                            fuelRow(fuel)
+                        }
+                    } header: {
+                        Text(loc.fuelPickerOtherSection)
+                    }
                 }
             }
             .navigationTitle(loc.fuel)
@@ -41,5 +53,25 @@ struct FuelTypePickerSheet: View {
                 }
             }
         }
+    }
+
+    private func fuelRow(_ fuel: FuelType) -> some View {
+        Button {
+            preferences.selectedFuelType = fuel
+            dismiss()
+        } label: {
+            HStack {
+                Image(systemName: fuel.icon)
+                    .frame(width: 24)
+                    .foregroundStyle(.blue)
+                Text(fuel.displayName(for: preferences.selectedCountry))
+                Spacer()
+                if preferences.selectedFuelType == fuel {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.blue)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }

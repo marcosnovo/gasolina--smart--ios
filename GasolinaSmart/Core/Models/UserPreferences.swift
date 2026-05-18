@@ -59,7 +59,14 @@ final class UserPreferences {
         didSet { save() }
     }
     var selectedVehicleId: UUID {
-        didSet { save() }
+        didSet {
+            // Switching vehicle: drop any session override so the new vehicle
+            // shows its own primary fuel.
+            if oldValue != selectedVehicleId, fuelFilterOverride != nil {
+                fuelFilterOverride = nil
+            }
+            save()
+        }
     }
     var preferredRadiusKm: Double {
         didSet { save() }
@@ -86,8 +93,14 @@ final class UserPreferences {
         didSet {
             if oldValue != selectedCountry {
                 let supported = selectedCountry.supportedFuelTypes
-                if !supported.contains(selectedFuelType) {
-                    selectedFuelType = selectedCountry.defaultFuel
+                // Drop an override that's no longer valid for the new country.
+                if let override = fuelFilterOverride, !supported.contains(override) {
+                    fuelFilterOverride = nil
+                }
+                // If the vehicle's own fuel isn't supported either, fall back
+                // to the country's default (becomes the new override).
+                if !supported.contains(selectedVehicle.fuelType), fuelFilterOverride == nil {
+                    fuelFilterOverride = selectedCountry.defaultFuel
                 }
                 save()
             }
@@ -127,13 +140,37 @@ final class UserPreferences {
         }
     }
 
+    // Map filter override for the current session. nil means "use the vehicle's
+    // primary fuel". Set when the user picks a different fuel in the picker
+    // (typical case: GLP cars also filling with gasoline). Cleared when the
+    // user switches vehicle, so each vehicle starts on its own primary fuel.
+    var fuelFilterOverride: FuelType? {
+        didSet { save() }
+    }
+
     var selectedFuelType: FuelType {
-        get { selectedVehicle.fuelType }
+        get { fuelFilterOverride ?? selectedVehicle.fuelType }
         set {
-            var v = selectedVehicle
-            v.fuelType = newValue
-            selectedVehicle = v
+            if newValue == selectedVehicle.fuelType {
+                // Picking the vehicle's own fuel clears any override.
+                if fuelFilterOverride != nil { fuelFilterOverride = nil }
+            } else {
+                fuelFilterOverride = newValue
+            }
         }
+    }
+
+    // Both fuels a vehicle can actually run on. Single-fuel vehicles return
+    // [vehicle.fuelType]; GLP vehicles also include the country's gasoline.
+    var vehicleSupportedFuels: [FuelType] {
+        let primary = selectedVehicle.fuelType
+        guard primary == .glp else { return [primary] }
+        let gasolineForCountry: FuelType
+        switch selectedCountry {
+        case .spain: gasolineForCountry = .gasolina95
+        case .france, .germany, .uk, .italy: gasolineForCountry = .e5
+        }
+        return [primary, gasolineForCountry]
     }
 
     var tankSizeLiters: Double {
@@ -214,6 +251,12 @@ final class UserPreferences {
         let langRaw = defaults.string(forKey: "appLanguage") ?? AppLanguage.system.rawValue
         appLanguage = AppLanguage(rawValue: langRaw) ?? .system
         autoDetectCountry = defaults.object(forKey: "autoDetectCountry") as? Bool ?? false
+        if let overrideRaw = defaults.string(forKey: "fuelFilterOverride"),
+           let override = FuelType(rawValue: overrideRaw) {
+            fuelFilterOverride = override
+        } else {
+            fuelFilterOverride = nil
+        }
     }
 
     func addVehicle(_ vehicle: Vehicle) {
@@ -276,6 +319,11 @@ final class UserPreferences {
         defaults.set(selectedCountry.rawValue, forKey: "selectedCountry")
         defaults.set(appLanguage.rawValue, forKey: "appLanguage")
         defaults.set(autoDetectCountry, forKey: "autoDetectCountry")
+        if let override = fuelFilterOverride {
+            defaults.set(override.rawValue, forKey: "fuelFilterOverride")
+        } else {
+            defaults.removeObject(forKey: "fuelFilterOverride")
+        }
         let shared = UserDefaults(suiteName: "group.MarcosNovo.GasolinaSmart")
         shared?.set(appLanguage.rawValue, forKey: "appLanguage")
         shared?.set(selectedCountry.rawValue, forKey: "selectedCountry")
