@@ -8,8 +8,11 @@ import {
   queryPriceHistory,
   queryCountryStats,
   getCountryMetaValue,
+  setCountryMetaValue,
 } from "./database";
 import { COUNTRY_INFO, SUPPORTED_COUNTRIES } from "./countries";
+import { fetchSpain } from "./fetchers/spain";
+import { fetchFrance } from "./fetchers/france";
 
 export interface Env {
   DB: D1Database;
@@ -175,6 +178,38 @@ app.get("/api/history/:stationId", async (c) => {
   const history = await queryPriceHistory(c.env.DB, stationId, days);
 
   return c.json(history);
+});
+
+// --- Manual fetch trigger ---
+
+app.post("/api/fetch", async (c) => {
+  const country = c.req.query("country") || "ES";
+
+  try {
+    let result: { count: number; duration: number };
+    switch (country) {
+      case "ES":
+        result = await fetchSpain(c.env.DB);
+        break;
+      case "FR":
+        result = await fetchFrance(c.env.DB);
+        break;
+      default:
+        return c.json({ success: false, error: `Country ${country} not yet ported` }, 400);
+    }
+
+    await setCountryMetaValue(c.env.DB, country, "last_error", "");
+    return c.json({ success: true, country, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    await setCountryMetaValue(
+      c.env.DB,
+      country,
+      "last_error",
+      `${new Date().toISOString()} — ${message}`
+    );
+    return c.json({ success: false, country, error: message }, 500);
+  }
 });
 
 export default app;
