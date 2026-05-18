@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import {
   queryStationsNearby,
   queryAllStations,
+  queryAllChargingStations,
   queryCheapest,
   queryAveragePrice,
   queryStationDetail,
@@ -11,6 +12,7 @@ import {
   getCountryMetaValue,
   setCountryMetaValue,
 } from "./database";
+import { fetchOpenChargeMap, shouldFetchChargingStations } from "./fetchers/openchargemap";
 import { COUNTRY_INFO, SUPPORTED_COUNTRIES } from "./countries";
 import { fetchSpain, shouldFetchSpain } from "./fetchers/spain";
 import { fetchFrance, shouldFetchFrance } from "./fetchers/france";
@@ -28,6 +30,7 @@ const FETCH_INTERVALS = {
 export interface Env {
   DB: D1Database;
   TANKERKOENIG_API_KEY?: string;
+  OPENCHARGEMAP_API_KEY?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -136,6 +139,19 @@ app.get("/api/stations/all", async (c) => {
   });
 });
 
+// --- EV charging stations (full snapshot) ---
+app.get("/api/charging/all", async (c) => {
+  const country = c.req.query("country") || "ES";
+  const stations = await queryAllChargingStations(c.env.DB, country);
+  const lastUpdated = await getCountryMetaValue(c.env.DB, country, "charging_last_fetch");
+
+  return c.json({
+    stations,
+    count: stations.length,
+    last_updated: lastUpdated,
+  });
+});
+
 // --- Cheapest ---
 
 app.get("/api/stations/cheapest", async (c) => {
@@ -197,6 +213,26 @@ app.get("/api/countries", async (c) => {
   );
 
   return c.json(countries);
+});
+
+// --- Manual EV charging fetch trigger ---
+
+app.post("/api/fetch-charging", async (c) => {
+  const country = c.req.query("country") || "ES";
+  try {
+    const result = await fetchOpenChargeMap(c.env.DB, country, c.env.OPENCHARGEMAP_API_KEY);
+    await setCountryMetaValue(c.env.DB, country, "charging_last_error", "");
+    return c.json({ success: true, country, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    await setCountryMetaValue(
+      c.env.DB,
+      country,
+      "charging_last_error",
+      `${new Date().toISOString()} — ${message}`
+    );
+    return c.json({ success: false, country, error: message }, 500);
+  }
 });
 
 // --- Price history ---
@@ -274,10 +310,20 @@ async function runFetcher(
 }
 
 async function runScheduled(event: ScheduledController, env: Env): Promise<void> {
-  // Daily Italy fetch
+  // Daily Italy fetch + EV charging refresh across all countries
+  // (OpenChargeMap data changes slowly — once a day is plenty and
+  // keeps us safely under the free-tier API quota.)
   if (event.cron === "0 6 * * *") {
-    console.log("[cron] Daily IT trigger");
+    console.log("[cron] Daily IT + EV charging trigger");
     await runFetcher(env.DB, "IT", () => fetchItaly(env.DB));
+
+    for (const country of ["ES", "FR", "GB", "DE", "IT"]) {
+      if (await shouldFetchChargingStations(env.DB, country, 60 * 12)) {
+        await runFetcher(env.DB, country, () =>
+          fetchOpenChargeMap(env.DB, country, env.OPENCHARGEMAP_API_KEY)
+        );
+      }
+    }
     return;
   }
 

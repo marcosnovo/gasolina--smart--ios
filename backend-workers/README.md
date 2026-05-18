@@ -48,6 +48,10 @@ npm run r2:create
 npx wrangler secret put TANKERKOENIG_API_KEY
 # → paste your key when prompted
 
+# 6b. (Phase 2B) Set the OpenChargeMap API key (free; register at
+#     https://openchargemap.org/site/profile/applications)
+npx wrangler secret put OPENCHARGEMAP_API_KEY
+
 # 7. Deploy
 npm run deploy
 ```

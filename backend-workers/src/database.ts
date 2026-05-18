@@ -450,6 +450,184 @@ export async function queryCountryStats(
   return out;
 }
 
+// =============================================================================
+// EV charging stations
+// =============================================================================
+
+export interface ChargingConnectionInput {
+  typeName: string;
+  powerKW: number | null;
+  quantity: number | null;
+}
+
+export interface ChargingStationInput {
+  id: string;
+  name: string;
+  operatorName: string | null;
+  address: string;
+  municipality: string;
+  province: string;
+  latitude: number;
+  longitude: number;
+  numberOfPoints: number;
+  isOperational: boolean;
+  usageCost: string | null;
+  connections: ChargingConnectionInput[];
+}
+
+export interface ChargingStationResult {
+  id: string;
+  name: string;
+  operator_name: string | null;
+  address: string;
+  municipality: string;
+  province: string;
+  latitude: number;
+  longitude: number;
+  country: string;
+  number_of_points: number;
+  is_operational: boolean;
+  usage_cost: string | null;
+  max_power_kw: number | null;
+  connections: ChargingConnectionInput[];
+  updated_at: string;
+}
+
+interface ChargingStationRow {
+  id: string;
+  name: string;
+  operator_name: string | null;
+  address: string;
+  municipality: string;
+  province: string;
+  latitude: number;
+  longitude: number;
+  country: string;
+  number_of_points: number;
+  is_operational: number;
+  usage_cost: string | null;
+  max_power_kw: number | null;
+  connectors_json: string;
+  updated_at: string;
+}
+
+export async function saveChargingStations(
+  db: D1Database,
+  country: string,
+  stations: ChargingStationInput[]
+): Promise<{ saved: boolean; count: number }> {
+  if (stations.length === 0) {
+    console.warn(`[db] saveChargingStations(${country}): empty array, skipping`);
+    return { saved: false, count: 0 };
+  }
+
+  const now = new Date().toISOString();
+  const stmts: D1PreparedStatement[] = [];
+
+  for (const s of stations) {
+    const maxPower = s.connections
+      .map((c) => c.powerKW)
+      .filter((p): p is number => p != null)
+      .reduce<number | null>((acc, v) => (acc == null || v > acc ? v : acc), null);
+
+    stmts.push(
+      db
+        .prepare(
+          `INSERT INTO charging_stations (id, name, operator_name, address, municipality, province,
+             latitude, longitude, country, number_of_points, is_operational, usage_cost,
+             max_power_kw, connectors_json, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             name = excluded.name, operator_name = excluded.operator_name,
+             address = excluded.address, municipality = excluded.municipality,
+             province = excluded.province, latitude = excluded.latitude,
+             longitude = excluded.longitude, country = excluded.country,
+             number_of_points = excluded.number_of_points,
+             is_operational = excluded.is_operational, usage_cost = excluded.usage_cost,
+             max_power_kw = excluded.max_power_kw, connectors_json = excluded.connectors_json,
+             updated_at = excluded.updated_at`
+        )
+        .bind(
+          s.id,
+          s.name,
+          s.operatorName,
+          s.address,
+          s.municipality,
+          s.province,
+          s.latitude,
+          s.longitude,
+          country,
+          s.numberOfPoints,
+          s.isOperational ? 1 : 0,
+          s.usageCost,
+          maxPower,
+          JSON.stringify(s.connections),
+          now
+        )
+    );
+  }
+
+  stmts.push(
+    db
+      .prepare(
+        `INSERT INTO country_meta (country, key, value) VALUES (?, ?, ?)
+         ON CONFLICT(country, key) DO UPDATE SET value = excluded.value`
+      )
+      .bind(country, "charging_last_fetch", now)
+  );
+
+  const CHUNK = 500;
+  for (let i = 0; i < stmts.length; i += CHUNK) {
+    await db.batch(stmts.slice(i, i + CHUNK));
+  }
+
+  return { saved: true, count: stations.length };
+}
+
+export async function queryAllChargingStations(
+  db: D1Database,
+  country: string
+): Promise<ChargingStationResult[]> {
+  const res = await db
+    .prepare("SELECT * FROM charging_stations WHERE country = ? ORDER BY id")
+    .bind(country)
+    .all<ChargingStationRow>();
+
+  return res.results.map((row) => ({
+    id: row.id,
+    name: row.name,
+    operator_name: row.operator_name,
+    address: row.address,
+    municipality: row.municipality,
+    province: row.province,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    country: row.country,
+    number_of_points: row.number_of_points,
+    is_operational: row.is_operational === 1,
+    usage_cost: row.usage_cost,
+    max_power_kw: row.max_power_kw,
+    connections: parseConnectorsJSON(row.connectors_json),
+    updated_at: row.updated_at,
+  }));
+}
+
+function parseConnectorsJSON(raw: string): ChargingConnectionInput[] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((c): c is ChargingConnectionInput =>
+      typeof c === "object" && c !== null && typeof c.typeName === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
+// =============================================================================
+// Country meta
+// =============================================================================
+
 export async function getCountryMetaValue(
   db: D1Database,
   country: string,
