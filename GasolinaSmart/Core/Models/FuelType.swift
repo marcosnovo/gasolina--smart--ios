@@ -55,6 +55,9 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case (.glp, .italy): return "GPL"
         case (.gnc, .italy): return "Metano"
         case (.gnc, _): return "CNG"
+        case (.gasolina95, .mexico): return "Magna" // 87 octanos
+        case (.gasolina98, .mexico): return "Premium" // ≥91 octanos
+        case (.dieselA, .mexico): return "Diésel"
         default: return displayName
         }
     }
@@ -79,6 +82,9 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         case (.dieselA, .france): return "GOL"
         case (.glp, .france): return "GPL"
         case (.e85, _): return "E85"
+        case (.gasolina95, .mexico): return "Magna"
+        case (.gasolina98, .mexico): return "Prem"
+        case (.dieselA, .mexico): return "Diésel"
         default: return shortLabel
         }
     }
@@ -103,6 +109,8 @@ enum FuelType: String, CaseIterable, Codable, Identifiable, Sendable {
         switch (self, country) {
         case (.gnc, _): return "€/kg"
         case (_, .uk): return "p/L"
+        case (_, .mexico): return "$/L"
+        case (_, .usa): return "$/L"
         default: return "€/L"
         }
     }

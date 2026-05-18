@@ -87,6 +87,21 @@ export const COUNTRY_INFO: Record<string, CountryInfo> = {
       license: "CC BY-SA 4.0",
     },
   },
+  MX: {
+    displayName: "México",
+    currency: "MXN",
+    currencySymbol: "$",
+    // Mexico (CRE) publishes 'regular' (≈87 octanos), 'premium' (≥91)
+    // and 'diesel'. We map them onto the shared fuel enum:
+    //   regular → gasolina95, premium → gasolina98, diesel → dieselA.
+    supportedFuels: ["gasolina95", "gasolina98", "dieselA"],
+    dataFreshness: "daily",
+    attribution: {
+      text: "Comisión Reguladora de Energía (CRE), datos abiertos",
+      url: "https://datos.gob.mx/busca/dataset/precios-vigentes-de-gasolinas-y-diesel",
+      license: "Libre uso MX",
+    },
+  },
 };
 
 export const SUPPORTED_COUNTRIES = Object.keys(COUNTRY_INFO);

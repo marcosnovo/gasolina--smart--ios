@@ -85,6 +85,12 @@ const COUNTRY_BBOXES: Record<string, BBox[]> = {
     { minLat: 51.0, maxLat: 72.0, minLon: -180, maxLon: -130, label: "US-AK" },
     { minLat: 18.5, maxLat: 22.5, minLon: -161, maxLon: -154, label: "US-HI" },
   ],
+  // Mexico has ~1500-2000 chargers on OCM; two boxes (north / south)
+  // are more than enough to stay below the 5000-per-request cap.
+  MX: [
+    { minLat: 14.5, maxLat: 22.5, minLon: -118.5, maxLon: -86.5, label: "MX-S" },
+    { minLat: 22.5, maxLat: 32.8, minLon: -118.5, maxLon: -86.5, label: "MX-N" },
+  ],
 };
 
 interface OCMConnection {
