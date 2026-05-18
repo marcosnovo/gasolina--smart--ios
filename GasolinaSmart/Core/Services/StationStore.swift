@@ -51,6 +51,47 @@ final class StationStore {
         await loadFromNetwork(location: location, radiusKm: radiusKm, force: true)
     }
 
+    // Loads every station of the active country in one network call and
+    // caches the result. After this returns, all subsequent queries
+    // (nearbySummary, areaSummary, …) work against an in-memory dataset
+    // that covers the whole country, so panning the map anywhere is
+    // instant and doesn't need extra fetches.
+    func loadAllCountryStations(force: Bool = false) async {
+        loadGeneration += 1
+        let myGeneration = loadGeneration
+        let country = activeCountry
+
+        if !force,
+           let age = await StationCache.shared.cacheAge(country: country),
+           age < 30 * 60, !allStations.isEmpty {
+            isLoading = false
+            return
+        }
+
+        isLoading = allStations.isEmpty
+        error = nil
+
+        do {
+            let response = try await BackendAPIService.shared.fetchAllStations(country: country)
+            guard myGeneration == loadGeneration else { return }
+            let stations = response.stations.map { $0.toFuelStation() }
+            allStations = stations
+            lastUpdated = Date()
+            loadedRadiusKm = .infinity
+            isUsingCache = false
+            await StationCache.shared.set(stations, country: country)
+        } catch {
+            guard myGeneration == loadGeneration else { return }
+            if allStations.isEmpty {
+                self.error = error.localizedDescription
+            }
+        }
+
+        if myGeneration == loadGeneration {
+            isLoading = false
+        }
+    }
+
     // MARK: - Network loading
 
     private func loadFromNetwork(location: CLLocation?, radiusKm: Double, force: Bool = false) async {

@@ -127,6 +127,25 @@ actor BackendAPIService {
         return try JSONDecoder().decode(StationsResponse.self, from: data)
     }
 
+    // MARK: - All stations of a country (full snapshot)
+
+    func fetchAllStations(country: Country = .spain) async throws -> StationsResponse {
+        var components = URLComponents(string: "\(base(for: country))/api/stations/all")!
+        components.queryItems = [
+            URLQueryItem(name: "country", value: country.rawValue),
+        ]
+        guard let url = components.url else { throw BackendError.invalidURL }
+
+        // Whole-country payloads can be a few MB. Allow more time than the
+        // default request timeout (10 s) for this one call.
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 60
+
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        return try JSONDecoder().decode(StationsResponse.self, from: data)
+    }
+
     // MARK: - Cheapest
 
     struct CheapestResponse: Decodable, Sendable {
