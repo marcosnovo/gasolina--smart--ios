@@ -85,20 +85,35 @@ struct Vehicle: Codable, Identifiable, Hashable {
     let id: UUID
     var name: String
     var brand: String
+    /// Primary fuel: gasoline or diesel. Never `.glp` going forward — GLP is a
+    /// dual-fuel flag (`hasGLP`) layered on top of the primary.
     var fuelType: FuelType
+    /// True when the vehicle is also able to run on LPG/GLP. Realistic LPG
+    /// installations always retain a gasoline primary for cold starts and for
+    /// areas without LPG stations, so the two are always kept together.
+    var hasGLP: Bool
     var tankSizeLiters: Double
     var consumptionL100Km: Double
     var vehicleType: VehicleType
     var vehicleColor: VehicleColor
 
     init(id: UUID = UUID(), name: String, brand: String = "",
-         fuelType: FuelType, tankSizeLiters: Double = 50,
+         fuelType: FuelType, hasGLP: Bool = false,
+         tankSizeLiters: Double = 50,
          consumptionL100Km: Double = 7.0,
          vehicleType: VehicleType = .sedan, vehicleColor: VehicleColor = .silver) {
         self.id = id
         self.name = name
         self.brand = brand
-        self.fuelType = fuelType
+        // If the caller still passes .glp as primary (legacy callers), migrate
+        // to the new shape immediately.
+        if fuelType == .glp {
+            self.fuelType = .gasolina95
+            self.hasGLP = true
+        } else {
+            self.fuelType = fuelType
+            self.hasGLP = hasGLP
+        }
         self.tankSizeLiters = tankSizeLiters
         self.consumptionL100Km = consumptionL100Km
         self.vehicleType = vehicleType
@@ -126,7 +141,7 @@ struct Vehicle: Codable, Identifiable, Hashable {
     ]
 
     enum CodingKeys: String, CodingKey {
-        case id, name, brand, fuelType, tankSizeLiters, consumptionL100Km, vehicleType, vehicleColor
+        case id, name, brand, fuelType, hasGLP, tankSizeLiters, consumptionL100Km, vehicleType, vehicleColor
     }
 
     init(from decoder: Decoder) throws {
@@ -134,7 +149,20 @@ struct Vehicle: Codable, Identifiable, Hashable {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         brand = try container.decodeIfPresent(String.self, forKey: .brand) ?? ""
-        fuelType = try container.decode(FuelType.self, forKey: .fuelType)
+
+        // Migration: vehicles previously stored as GLP-primary are reshaped
+        // into "gasolina95 primary + hasGLP = true". hasGLP didn't exist
+        // before, so default to false for everything else.
+        let storedFuel = try container.decode(FuelType.self, forKey: .fuelType)
+        let storedHasGLP = try container.decodeIfPresent(Bool.self, forKey: .hasGLP) ?? false
+        if storedFuel == .glp {
+            fuelType = .gasolina95
+            hasGLP = true
+        } else {
+            fuelType = storedFuel
+            hasGLP = storedHasGLP
+        }
+
         tankSizeLiters = try container.decode(Double.self, forKey: .tankSizeLiters)
         let vType = try container.decodeIfPresent(VehicleType.self, forKey: .vehicleType) ?? .sedan
         vehicleType = vType

@@ -46,6 +46,8 @@ struct Loc {
     var fuelPickerVehicleSection: String { s("Tu vehículo", "Your vehicle", "Votre véhicule", "Ihr Fahrzeug", "O seu veículo") }
     var fuelPickerOtherSection: String { s("Otros combustibles", "Other fuels", "Autres carburants", "Andere Kraftstoffe", "Outros combustíveis") }
     var fuelPickerDualFuelHint: String { s("Los coches GLP también pueden repostar gasolina.", "GLP cars can also refuel with petrol.", "Les voitures GPL peuvent aussi faire le plein d'essence.", "GLP-Autos können auch Benzin tanken.", "Os carros GPL também podem abastecer com gasolina.") }
+    var vehicleHasGLP: String { s("También GLP (gas licuado)", "Also LPG", "Aussi GPL", "Auch LPG", "Também GPL") }
+    var vehicleHasGLPHint: String { s("Marca esta opción si tu coche puede repostar tanto gasolina como GLP.", "Tick this if your car can refuel with both petrol and LPG.", "Cochez si votre voiture peut faire le plein d'essence et de GPL.", "Aktivieren, wenn das Auto sowohl Benzin als auch LPG tanken kann.", "Marque se o seu carro pode abastecer com gasolina e GPL.") }
 
     // MARK: - Map
 

@@ -967,6 +967,7 @@ struct VehicleEditSheet: View {
     @State private var name: String
     @State private var brand: String
     @State private var fuelType: FuelType
+    @State private var hasGLP: Bool
     @State private var tankSize: Double
     @State private var consumptionL100Km: Double
     @State private var vehicleType: VehicleType
@@ -981,6 +982,7 @@ struct VehicleEditSheet: View {
         _name = State(initialValue: vehicle?.name ?? "")
         _brand = State(initialValue: vehicle?.brand ?? "")
         _fuelType = State(initialValue: v.fuelType)
+        _hasGLP = State(initialValue: v.hasGLP)
         _tankSize = State(initialValue: v.tankSizeLiters)
         _consumptionL100Km = State(initialValue: v.consumptionL100Km)
         _vehicleType = State(initialValue: v.vehicleType)
@@ -1023,7 +1025,7 @@ struct VehicleEditSheet: View {
     }
 
     private var previewVehicle: Vehicle {
-        Vehicle(name: name, brand: brand, fuelType: fuelType,
+        Vehicle(name: name, brand: brand, fuelType: fuelType, hasGLP: hasGLP,
                 tankSizeLiters: tankSize, consumptionL100Km: consumptionL100Km,
                 vehicleType: vehicleType, vehicleColor: vehicleColor)
     }
@@ -1168,26 +1170,67 @@ struct VehicleEditSheet: View {
         }
     }
 
+    private var pickablePrimaryFuels: [FuelType] {
+        // GLP is handled by the separate toggle; the picker is exclusively for
+        // gasoline / diesel options.
+        var fuels = preferences.selectedCountry.supportedFuelTypes.filter { $0 != .glp }
+        // Make sure the currently selected fuel is always visible (e.g. when
+        // editing a vehicle whose primary fuel isn't normally listed in the
+        // active country).
+        if !fuels.contains(fuelType), fuelType != .glp {
+            fuels.insert(fuelType, at: 0)
+        }
+        return fuels
+    }
+
     private var fuelSection: some View {
         Section(loc.fuel) {
-            ForEach(preferences.selectedCountry.supportedFuelTypes) { fuel in
-                Button {
-                    fuelType = fuel
-                } label: {
-                    HStack {
-                        Image(systemName: fuel.icon)
-                            .frame(width: 24)
-                            .foregroundStyle(Theme.Colors.accent)
-                        Text(fuel.displayName(for: preferences.selectedCountry))
-                        Spacer()
-                        if fuelType == fuel {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(Theme.Colors.accent)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(pickablePrimaryFuels) { fuel in
+                        let isSelected = fuelType == fuel
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) { fuelType = fuel }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: fuel.icon)
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(fuel.displayName(for: preferences.selectedCountry))
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                isSelected
+                                    ? Theme.Colors.accent.opacity(0.15)
+                                    : Color(.tertiarySystemFill)
+                            )
+                            .foregroundStyle(
+                                isSelected ? Theme.Colors.accent : Color(.label)
+                            )
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(isSelected ? Theme.Colors.accent : .clear, lineWidth: 1.5)
+                            )
                         }
+                        .buttonStyle(.plain)
                     }
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 4)
             }
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+
+            Toggle(isOn: $hasGLP) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(loc.vehicleHasGLP)
+                        .font(.system(size: 15))
+                    Text(loc.vehicleHasGLPHint)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(.secondaryLabel))
+                }
+            }
+            .tint(Theme.Colors.accent)
         }
     }
 
@@ -1247,6 +1290,7 @@ struct VehicleEditSheet: View {
             name: finalName,
             brand: trimmedBrand,
             fuelType: fuelType,
+            hasGLP: hasGLP,
             tankSizeLiters: tankSize,
             consumptionL100Km: consumptionL100Km,
             vehicleType: vehicleType,

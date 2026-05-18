@@ -160,17 +160,14 @@ final class UserPreferences {
         }
     }
 
-    // Both fuels a vehicle can actually run on. Single-fuel vehicles return
-    // [vehicle.fuelType]; GLP vehicles also include the country's gasoline.
+    // Every fuel the selected vehicle can actually run on. Mono-fuel vehicles
+    // return just [primary]; LPG-equipped vehicles also include .glp.
     var vehicleSupportedFuels: [FuelType] {
-        let primary = selectedVehicle.fuelType
-        guard primary == .glp else { return [primary] }
-        let gasolineForCountry: FuelType
-        switch selectedCountry {
-        case .spain: gasolineForCountry = .gasolina95
-        case .france, .germany, .uk, .italy: gasolineForCountry = .e5
+        var fuels: [FuelType] = [selectedVehicle.fuelType]
+        if selectedVehicle.hasGLP, !fuels.contains(.glp) {
+            fuels.append(.glp)
         }
-        return [primary, gasolineForCountry]
+        return fuels
     }
 
     var tankSizeLiters: Double {
