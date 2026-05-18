@@ -19,6 +19,13 @@ class ChargingPointAnnotation: MLNPointAnnotation {
     var chargingStation: ChargingStation?
 }
 
+struct VisibleMapArea: Equatable {
+    let minLatitude: Double
+    let maxLatitude: Double
+    let minLongitude: Double
+    let maxLongitude: Double
+}
+
 struct MapLibreMapView: UIViewRepresentable {
     let stations: [FuelStation]
     let cheapestId: String?
@@ -32,6 +39,7 @@ struct MapLibreMapView: UIViewRepresentable {
     var isDarkMode: Bool = false
     var selectedFuelType: FuelType = .gasolina95
     var cheapestPrice: Decimal?
+    var onUserMovedMap: ((VisibleMapArea) -> Void)?
 
     private static let nearCheapestThreshold: Double = 1.02
 
@@ -360,6 +368,32 @@ struct MapLibreMapView: UIViewRepresentable {
                     mapView.setCenter(coord, zoomLevel: 13, animated: false)
                 }
             }
+        }
+
+        func mapView(
+            _ mapView: MLNMapView,
+            regionDidChangeWith reason: MLNCameraChangeReason,
+            animated: Bool
+        ) {
+            // Only notify on user-initiated movements; ignore programmatic camera updates
+            // (initial fit, centerOnUser, zoomToRadius) which would otherwise trick the UI
+            // into thinking the user is "exploring".
+            let userGestures: MLNCameraChangeReason = [
+                .gesturePan, .gesturePinch, .gestureRotate,
+                .gestureZoomIn, .gestureZoomOut, .gestureOneFingerZoom, .gestureTilt,
+            ]
+            guard !reason.intersection(userGestures).isEmpty,
+                  hasFittedInitialBounds else { return }
+
+            let bounds = mapView.visibleCoordinateBounds
+            parent.onUserMovedMap?(
+                VisibleMapArea(
+                    minLatitude: bounds.sw.latitude,
+                    maxLatitude: bounds.ne.latitude,
+                    minLongitude: bounds.sw.longitude,
+                    maxLongitude: bounds.ne.longitude
+                )
+            )
         }
     }
 }

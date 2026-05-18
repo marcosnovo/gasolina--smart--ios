@@ -70,6 +70,8 @@ struct Loc {
         s("Sin gasolineras en \(km) km", "No stations within \(km) km", "Aucune station dans \(km) km", "Keine Tankstellen im Umkreis von \(km) km", "Sem postos em \(km) km")
     }
 
+    var mapSearchThisArea: String { s("Buscar en esta zona", "Search this area", "Rechercher dans cette zone", "In diesem Bereich suchen", "Pesquisar nesta área") }
+    var mapBackToMyArea: String { s("Volver a mi zona", "Back to my area", "Retour à ma zone", "Zurück zu meinem Bereich", "Voltar à minha zona") }
     var listTitle: String { s("Gasolineras", "Stations", "Stations", "Tankstellen", "Postos") }
     var listRecommended: String { s("Recomendado", "Recommended", "Recommandé", "Empfohlen", "Recomendado") }
     var listPrice: String { s("Precio", "Price", "Prix", "Preis", "Preço") }

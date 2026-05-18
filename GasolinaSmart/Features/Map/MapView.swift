@@ -26,6 +26,8 @@ struct MapView: View {
     @State private var initialLoadComplete = false
     @State private var selectedChargingStation: ChargingStation?
     @State private var showStationList = false
+    @State private var pendingArea: VisibleMapArea?
+    @State private var isAreaMode = false
 
     var body: some View {
         ZStack {
@@ -46,7 +48,10 @@ struct MapView: View {
                 zoomRadiusCounter: zoomRadiusCounter,
                 isDarkMode: preferences.appearance == .dark,
                 selectedFuelType: preferences.selectedFuelType,
-                cheapestPrice: cachedCheapest?.price(for: preferences.selectedFuelType)
+                cheapestPrice: cachedCheapest?.price(for: preferences.selectedFuelType),
+                onUserMovedMap: { area in
+                    pendingArea = area
+                }
             )
             .ignoresSafeArea()
             .opacity(initialLoadComplete ? 1 : 0)
@@ -70,6 +75,12 @@ struct MapView: View {
                 if isLoadingAnyStations && initialLoadComplete {
                     loadingPill
                         .padding(.top, Theme.Spacing.sm)
+                }
+
+                if let pendingArea, initialLoadComplete {
+                    searchInAreaButton(area: pendingArea)
+                        .padding(.top, Theme.Spacing.sm)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 Spacer()
@@ -138,6 +149,7 @@ struct MapView: View {
             markReadyIfNeeded()
         }
         .onChange(of: preferences.preferredRadiusKm) { _, _ in
+            exitAreaMode()
             updateVisibleStations()
             updateChargingStations()
             zoomRadiusCounter += 1
@@ -153,6 +165,7 @@ struct MapView: View {
             }
         }
         .onChange(of: preferences.selectedFuelType) { _, _ in
+            exitAreaMode()
             updateVisibleStations()
         }
         .onChange(of: chargingStore.stations) { _, _ in
@@ -169,6 +182,8 @@ struct MapView: View {
             }
         }
         .onChange(of: preferences.selectedCountry) { _, newCountry in
+            isAreaMode = false
+            pendingArea = nil
             store.switchCountry(newCountry)
             visibleStations = []
             cachedCheapest = nil
@@ -340,6 +355,7 @@ struct MapView: View {
     private var mapActionButtons: some View {
         VStack(spacing: 10) {
             Button {
+                exitAreaMode()
                 centerOnUserCounter += 1
                 locationManager.requestLocation()
             } label: {
@@ -381,6 +397,53 @@ struct MapView: View {
     private var topBarOutline: some View {
         Capsule()
             .stroke(Color.black.opacity(0.08), lineWidth: 1)
+    }
+
+    // MARK: - Search in this area
+
+    private func searchInAreaButton(area: VisibleMapArea) -> some View {
+        Button {
+            applyAreaSearch(area)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(loc.mapSearchThisArea)
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(Theme.Colors.accent)
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func applyAreaSearch(_ area: VisibleMapArea) {
+        let summary = store.areaSummary(
+            minLatitude: area.minLatitude,
+            maxLatitude: area.maxLatitude,
+            minLongitude: area.minLongitude,
+            maxLongitude: area.maxLongitude,
+            fuelType: preferences.selectedFuelType,
+            limit: 30
+        )
+        visibleStations = summary.visibleStations
+        cachedCheapest = summary.cheapestStation
+        cachedAveragePrice = summary.averagePrice
+        isAreaMode = true
+        withAnimation(.easeInOut(duration: 0.2)) {
+            pendingArea = nil
+        }
+    }
+
+    private func exitAreaMode() {
+        guard isAreaMode else { return }
+        isAreaMode = false
+        pendingArea = nil
+        updateVisibleStations()
     }
 
     // MARK: - Bottom
@@ -543,6 +606,10 @@ struct MapView: View {
     }
 
     private func updateVisibleStations() {
+        // While the user is exploring a custom area via "Search this area",
+        // ignore the auto-refresh that re-centers around the user's location.
+        guard !isAreaMode else { return }
+
         guard let location = locationManager.location else {
             visibleStations = []
             cachedCheapest = nil

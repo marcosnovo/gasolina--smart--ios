@@ -168,6 +168,48 @@ final class StationStore {
         )
     }
 
+    // Bounds-based filter for the "Search in this area" feature. When the user
+    // pans the map and asks to search what's in view, we filter locally-loaded
+    // stations by lat/lon bounds. If there are more than `limit` matches, we
+    // keep the cheapest ones — that's what makes a zoomed-out search useful.
+    func areaSummary(
+        minLatitude: Double,
+        maxLatitude: Double,
+        minLongitude: Double,
+        maxLongitude: Double,
+        fuelType: FuelType,
+        limit: Int = 30
+    ) -> NearbyFuelSummary {
+        var matches: [(station: FuelStation, price: Decimal)] = []
+        matches.reserveCapacity(allStations.count)
+
+        for station in allStations {
+            guard let price = station.price(for: fuelType) else { continue }
+            guard station.latitude >= minLatitude,
+                  station.latitude <= maxLatitude,
+                  station.longitude >= minLongitude,
+                  station.longitude <= maxLongitude else { continue }
+            matches.append((station, price))
+        }
+
+        if matches.count > limit {
+            matches.sort { $0.price < $1.price }
+            matches = Array(matches.prefix(limit))
+        }
+
+        let visibleStations = matches.map(\.station)
+        let cheapestStation = matches.min { $0.price < $1.price }?.station
+        let averagePrice: Decimal? = matches.isEmpty
+            ? nil
+            : matches.map(\.price).reduce(Decimal.zero, +) / Decimal(matches.count)
+
+        return NearbyFuelSummary(
+            visibleStations: visibleStations,
+            cheapestStation: cheapestStation,
+            averagePrice: averagePrice
+        )
+    }
+
     func estimatedSaving(
         stationPrice: Decimal,
         averagePrice: Decimal,
