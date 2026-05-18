@@ -92,13 +92,18 @@ struct Vehicle: Codable, Identifiable, Hashable {
     /// installations always retain a gasoline primary for cold starts and for
     /// areas without LPG stations, so the two are always kept together.
     var hasGLP: Bool
+    /// True when the vehicle is a battery-electric vehicle. When this is set,
+    /// `fuelType`/`hasGLP`/`tankSizeLiters` are kept around (for if the user
+    /// flips the engine type back) but are ignored everywhere else — the map
+    /// shows charging points instead of fuel stations.
+    var isElectric: Bool
     var tankSizeLiters: Double
     var consumptionL100Km: Double
     var vehicleType: VehicleType
     var vehicleColor: VehicleColor
 
     init(id: UUID = UUID(), name: String, brand: String = "",
-         fuelType: FuelType, hasGLP: Bool = false,
+         fuelType: FuelType, hasGLP: Bool = false, isElectric: Bool = false,
          tankSizeLiters: Double = 50,
          consumptionL100Km: Double = 7.0,
          vehicleType: VehicleType = .sedan, vehicleColor: VehicleColor = .silver) {
@@ -114,6 +119,7 @@ struct Vehicle: Codable, Identifiable, Hashable {
             self.fuelType = fuelType
             self.hasGLP = hasGLP
         }
+        self.isElectric = isElectric
         self.tankSizeLiters = tankSizeLiters
         self.consumptionL100Km = consumptionL100Km
         self.vehicleType = vehicleType
@@ -141,7 +147,8 @@ struct Vehicle: Codable, Identifiable, Hashable {
     ]
 
     enum CodingKeys: String, CodingKey {
-        case id, name, brand, fuelType, hasGLP, tankSizeLiters, consumptionL100Km, vehicleType, vehicleColor
+        case id, name, brand, fuelType, hasGLP, isElectric,
+             tankSizeLiters, consumptionL100Km, vehicleType, vehicleColor
     }
 
     init(from decoder: Decoder) throws {
@@ -162,6 +169,7 @@ struct Vehicle: Codable, Identifiable, Hashable {
             fuelType = storedFuel
             hasGLP = storedHasGLP
         }
+        isElectric = try container.decodeIfPresent(Bool.self, forKey: .isElectric) ?? false
 
         tankSizeLiters = try container.decode(Double.self, forKey: .tankSizeLiters)
         let vType = try container.decodeIfPresent(VehicleType.self, forKey: .vehicleType) ?? .sedan

@@ -48,6 +48,11 @@ struct Loc {
     var fuelPickerDualFuelHint: String { s("Los coches GLP también pueden repostar gasolina.", "GLP cars can also refuel with petrol.", "Les voitures GPL peuvent aussi faire le plein d'essence.", "GLP-Autos können auch Benzin tanken.", "Os carros GPL também podem abastecer com gasolina.") }
     var vehicleHasGLP: String { s("También GLP (gas licuado)", "Also LPG", "Aussi GPL", "Auch LPG", "Também GPL") }
     var vehicleHasGLPHint: String { s("Marca esta opción si tu coche puede repostar tanto gasolina como GLP.", "Tick this if your car can refuel with both petrol and LPG.", "Cochez si votre voiture peut faire le plein d'essence et de GPL.", "Aktivieren, wenn das Auto sowohl Benzin als auch LPG tanken kann.", "Marque se o seu carro pode abastecer com gasolina e GPL.") }
+    var vehicleEngineType: String { s("Tipo de motor", "Engine type", "Type de moteur", "Antriebsart", "Tipo de motor") }
+    var vehicleEngineCombustion: String { s("Combustión", "Combustion", "Combustion", "Verbrennung", "Combustão") }
+    var vehicleEngineElectric: String { s("Eléctrico", "Electric", "Électrique", "Elektro", "Elétrico") }
+    var vehicleBatteryCapacity: String { s("Capacidad de batería", "Battery capacity", "Capacité de batterie", "Batteriekapazität", "Capacidade da bateria") }
+    var vehicleBatteryCapacityHint: String { s("Para estimar el coste por carga.", "Used to estimate cost per charge.", "Pour estimer le coût par charge.", "Zur Schätzung der Kosten pro Ladung.", "Para estimar o custo por carga.") }
 
     // MARK: - Map
 

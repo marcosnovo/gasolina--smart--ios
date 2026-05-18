@@ -968,6 +968,7 @@ struct VehicleEditSheet: View {
     @State private var brand: String
     @State private var fuelType: FuelType
     @State private var hasGLP: Bool
+    @State private var isElectric: Bool
     @State private var tankSize: Double
     @State private var consumptionL100Km: Double
     @State private var vehicleType: VehicleType
@@ -983,6 +984,7 @@ struct VehicleEditSheet: View {
         _brand = State(initialValue: vehicle?.brand ?? "")
         _fuelType = State(initialValue: v.fuelType)
         _hasGLP = State(initialValue: v.hasGLP)
+        _isElectric = State(initialValue: v.isElectric)
         _tankSize = State(initialValue: v.tankSizeLiters)
         _consumptionL100Km = State(initialValue: v.consumptionL100Km)
         _vehicleType = State(initialValue: v.vehicleType)
@@ -1000,9 +1002,15 @@ struct VehicleEditSheet: View {
                 brandSection
                 typeSection
                 colorSection
-                fuelSection
-                tankSection
-                consumptionSection
+                engineTypeSection
+                if isElectric {
+                    // Future EV-specific sections (battery capacity, connectors)
+                    // will land here in Phase 2C.
+                } else {
+                    fuelSection
+                    tankSection
+                    consumptionSection
+                }
             }
             .navigationTitle(isEditing ? loc.vehicleEdit : loc.vehicleNew)
             .navigationBarTitleDisplayMode(.inline)
@@ -1026,6 +1034,7 @@ struct VehicleEditSheet: View {
 
     private var previewVehicle: Vehicle {
         Vehicle(name: name, brand: brand, fuelType: fuelType, hasGLP: hasGLP,
+                isElectric: isElectric,
                 tankSizeLiters: tankSize, consumptionL100Km: consumptionL100Km,
                 vehicleType: vehicleType, vehicleColor: vehicleColor)
     }
@@ -1170,6 +1179,17 @@ struct VehicleEditSheet: View {
         }
     }
 
+    private var engineTypeSection: some View {
+        Section(loc.vehicleEngineType) {
+            Picker("", selection: $isElectric) {
+                Text(loc.vehicleEngineCombustion).tag(false)
+                Text(loc.vehicleEngineElectric).tag(true)
+            }
+            .pickerStyle(.segmented)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        }
+    }
+
     private var pickablePrimaryFuels: [FuelType] {
         // GLP is handled by the separate toggle; the picker is exclusively for
         // gasoline / diesel options.
@@ -1295,6 +1315,7 @@ struct VehicleEditSheet: View {
             brand: trimmedBrand,
             fuelType: fuelType,
             hasGLP: hasGLP,
+            isElectric: isElectric,
             tankSizeLiters: tankSize,
             consumptionL100Km: consumptionL100Km,
             vehicleType: vehicleType,

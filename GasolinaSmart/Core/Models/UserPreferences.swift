@@ -161,13 +161,21 @@ final class UserPreferences {
     }
 
     // Every fuel the selected vehicle can actually run on. Mono-fuel vehicles
-    // return just [primary]; LPG-equipped vehicles also include .glp.
+    // return just [primary]; LPG-equipped vehicles also include .glp. Battery
+    // electric vehicles return [] — they use charging points instead.
     var vehicleSupportedFuels: [FuelType] {
+        if selectedVehicle.isElectric { return [] }
         var fuels: [FuelType] = [selectedVehicle.fuelType]
         if selectedVehicle.hasGLP, !fuels.contains(.glp) {
             fuels.append(.glp)
         }
         return fuels
+    }
+
+    /// True when charging-station markers should be visible: either the user
+    /// explicitly enabled them, or the active vehicle is an EV (forcing it on).
+    var effectiveShowChargingStations: Bool {
+        showChargingStations || selectedVehicle.isElectric
     }
 
     var tankSizeLiters: Double {

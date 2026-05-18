@@ -121,7 +121,7 @@ struct MapView: View {
             // Full-country snapshot — covers the whole map, so panning
             // anywhere has data without needing more fetches.
             await store.loadAllCountryStations()
-            if preferences.showChargingStations, let location = locationManager.location {
+            if preferences.effectiveShowChargingStations, let location = locationManager.location {
                 await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
                 updateChargingStations()
             }
@@ -136,7 +136,7 @@ struct MapView: View {
                     preferences.selectedCountry = detected
                 }
                 Task {
-                    if preferences.showChargingStations {
+                    if preferences.effectiveShowChargingStations {
                         await chargingStore.loadStations(near: newLocation, radiusKm: preferences.preferredRadiusKm)
                         updateChargingStations()
                     }
@@ -153,7 +153,7 @@ struct MapView: View {
             updateChargingStations()
             zoomRadiusCounter += 1
             Task {
-                if preferences.showChargingStations, let location = locationManager.location {
+                if preferences.effectiveShowChargingStations, let location = locationManager.location {
                     await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
                     updateChargingStations()
                 }
@@ -166,7 +166,7 @@ struct MapView: View {
         .onChange(of: chargingStore.stations) { _, _ in
             updateChargingStations()
         }
-        .onChange(of: preferences.showChargingStations) { _, showCharging in
+        .onChange(of: preferences.effectiveShowChargingStations) { _, showCharging in
             if showCharging, let location = locationManager.location {
                 Task {
                     await chargingStore.loadStations(near: location, radiusKm: preferences.preferredRadiusKm)
@@ -638,7 +638,7 @@ struct MapView: View {
     // MARK: - Helpers
 
     private var isLoadingAnyStations: Bool {
-        store.isLoading || (preferences.showChargingStations && chargingStore.isLoading)
+        store.isLoading || (preferences.effectiveShowChargingStations && chargingStore.isLoading)
     }
 
     private func markReadyIfNeeded() {
@@ -720,7 +720,7 @@ struct MapView: View {
     }
 
     private func updateChargingStations() {
-        guard preferences.showChargingStations, let location = locationManager.location else {
+        guard preferences.effectiveShowChargingStations, let location = locationManager.location else {
             visibleChargingStations = []
             return
         }
