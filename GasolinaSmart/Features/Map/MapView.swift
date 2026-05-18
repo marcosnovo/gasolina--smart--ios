@@ -311,7 +311,7 @@ struct MapView: View {
 
             Button { showRadiusPicker = true } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "scope")
+                    Image(systemName: "dot.circle")
                         .font(.system(size: 13, weight: .medium))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(loc.mapRadius.uppercased())
