@@ -7,7 +7,7 @@ actor BackendAPIService {
         return f
     }()
 
-    private var baseURL = "https://gasolina-smart-ios-production.up.railway.app"
+    private var baseURL = "https://gasolina-smart-api.marcosnovo.workers.dev"
 
     private let session: URLSession
     private var lastHealthCheck: Date?

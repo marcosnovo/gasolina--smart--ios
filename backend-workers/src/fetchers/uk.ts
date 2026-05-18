@@ -69,13 +69,25 @@ async function fetchNearby(lat: number, lng: number): Promise<UKStation[]> {
 
   let response: Response;
   try {
+    // Mimic a real browser: gov.uk's edge has been seen rejecting Workers'
+    // default fetch with HTTP 525 (TLS handshake failed). A browser-style UA
+    // plus Accept-Language/Accept-Encoding headers gets us through.
     response = await fetch(url, {
       headers: {
-        "User-Agent": "GasolinaSmart-Backend/1.0",
-        Accept: "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+      cf: {
+        cacheTtl: 0,
+        cacheEverything: false,
       },
       signal: controller.signal,
-    });
+    } as RequestInit);
   } finally {
     clearTimeout(timeout);
   }
