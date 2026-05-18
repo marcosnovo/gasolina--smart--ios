@@ -70,14 +70,57 @@ npm run dev
 
 | Phase | What lands | Status |
 |---|---|---|
-| 1 | Scaffolding: wrangler config, schema, Hono base, this README | ✅ this commit |
-| 2 | D1 data layer (queries + writes) | pending |
-| 3 | Read endpoints (`/api/stations`, `/api/stations/cheapest`, `/api/stations/:id`, `/api/history/:stationId`, `/api/countries`, `/api/meta`, `/api/health`) | pending |
-| 4 | Fetchers: Spain + France + manual trigger `POST /api/fetch?country=…` | pending |
-| 5 | Fetchers: UK + Germany + Italy | pending |
-| 6 | Cron triggers + cutover (update iOS `BackendAPIService` base URL) | pending |
+| 1 | Scaffolding: wrangler config, schema, Hono base, this README | ✅ |
+| 2 | D1 data layer (queries + writes) | ✅ |
+| 3 | Read endpoints (`/api/stations`, `/api/stations/cheapest`, `/api/stations/:id`, `/api/history/:stationId`, `/api/countries`, `/api/meta`, `/api/health`) | ✅ |
+| 4 | Fetchers: Spain + France + manual trigger `POST /api/fetch?country=…` | ✅ |
+| 5 | Fetchers: UK + Germany + Italy | ✅ |
+| 6 | Cron triggers + cutover (update iOS `BackendAPIService` base URL) | ✅ |
 
-The existing `backend/` (Railway) keeps running until Phase 6. We only switch the iOS client over once Workers is verified.
+## Cutover from Railway
+
+After deploying and verifying that the Worker is populating D1:
+
+1. Trigger an initial fetch for each country to populate D1:
+   ```bash
+   curl -X POST 'https://gasolina-smart-api.<your-subdomain>.workers.dev/api/fetch?country=ES'
+   curl -X POST 'https://gasolina-smart-api.<your-subdomain>.workers.dev/api/fetch?country=FR'
+   curl -X POST 'https://gasolina-smart-api.<your-subdomain>.workers.dev/api/fetch?country=GB'
+   curl -X POST 'https://gasolina-smart-api.<your-subdomain>.workers.dev/api/fetch?country=DE'
+   curl -X POST 'https://gasolina-smart-api.<your-subdomain>.workers.dev/api/fetch?country=IT'
+   ```
+   GB and DE are sequential grid loops and may time out on the 30 s request
+   limit — that's fine, the cron trigger will pick them up.
+
+2. Verify reads return data:
+   ```bash
+   curl 'https://gasolina-smart-api.<your-subdomain>.workers.dev/api/health'
+   curl 'https://gasolina-smart-api.<your-subdomain>.workers.dev/api/stations?lat=40.4&lon=-3.7&radius=10&fuel=gasolina95'
+   ```
+
+3. Update the iOS app:
+   - Open `GasolinaSmart/Core/Networking/BackendAPIService.swift`
+   - Change `private var baseURL = "https://gasolina-smart-ios-production.up.railway.app"`
+     to the Workers URL.
+
+4. After a few days of stable Workers operation, delete the Railway project to
+   stop the bill.
+
+## Cron behaviour
+
+Two cron triggers, configured in `wrangler.toml`:
+
+| Schedule | Cron | What it does |
+|---|---|---|
+| Every 15 min | `*/15 * * * *` | Calls `shouldFetch*` per country and runs ES (15 min), FR (30 min), GB (15 min), DE (15 min) when due |
+| Daily 06:00 UTC | `0 6 * * *` | Runs IT (the MIMIT CSVs only refresh once a day) |
+
+Cron-triggered Workers have longer execution budgets than HTTP-triggered ones,
+so the GB/DE sequential grids are safe to run here.
+
+If a fetcher throws, its message is stored in `country_meta(country, 'last_error')`
+and surfaced via `GET /api/health`. The other fetchers in the same cron run are
+unaffected.
 
 ## Project layout
 

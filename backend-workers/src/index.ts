@@ -11,11 +11,18 @@ import {
   setCountryMetaValue,
 } from "./database";
 import { COUNTRY_INFO, SUPPORTED_COUNTRIES } from "./countries";
-import { fetchSpain } from "./fetchers/spain";
-import { fetchFrance } from "./fetchers/france";
-import { fetchUK } from "./fetchers/uk";
-import { fetchGermany } from "./fetchers/germany";
+import { fetchSpain, shouldFetchSpain } from "./fetchers/spain";
+import { fetchFrance, shouldFetchFrance } from "./fetchers/france";
+import { fetchUK, shouldFetchUK } from "./fetchers/uk";
+import { fetchGermany, shouldFetchGermany } from "./fetchers/germany";
 import { fetchItaly } from "./fetchers/italy";
+
+const FETCH_INTERVALS = {
+  ES: 15,
+  FR: 30,
+  GB: 15,
+  DE: 15,
+} as const;
 
 export interface Env {
   DB: D1Database;
@@ -224,4 +231,56 @@ app.post("/api/fetch", async (c) => {
   }
 });
 
-export default app;
+// --- Scheduled handler (Cron Triggers) ---
+
+async function runFetcher(
+  db: D1Database,
+  country: string,
+  fn: () => Promise<unknown>
+): Promise<void> {
+  try {
+    await fn();
+    await setCountryMetaValue(db, country, "last_error", "");
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[cron:${country}] Fetch failed: ${message}`);
+    await setCountryMetaValue(
+      db,
+      country,
+      "last_error",
+      `${new Date().toISOString()} — ${message}`
+    );
+  }
+}
+
+async function runScheduled(event: ScheduledController, env: Env): Promise<void> {
+  // Daily Italy fetch
+  if (event.cron === "0 6 * * *") {
+    console.log("[cron] Daily IT trigger");
+    await runFetcher(env.DB, "IT", () => fetchItaly(env.DB));
+    return;
+  }
+
+  // Every-15-min dispatch — each country checks its own interval
+  console.log(`[cron] 15-min trigger at ${new Date(event.scheduledTime).toISOString()}`);
+
+  if (await shouldFetchSpain(env.DB, FETCH_INTERVALS.ES)) {
+    await runFetcher(env.DB, "ES", () => fetchSpain(env.DB));
+  }
+  if (await shouldFetchFrance(env.DB, FETCH_INTERVALS.FR)) {
+    await runFetcher(env.DB, "FR", () => fetchFrance(env.DB));
+  }
+  if (await shouldFetchUK(env.DB, FETCH_INTERVALS.GB)) {
+    await runFetcher(env.DB, "GB", () => fetchUK(env.DB));
+  }
+  if (await shouldFetchGermany(env.DB, FETCH_INTERVALS.DE)) {
+    await runFetcher(env.DB, "DE", () => fetchGermany(env.DB, env.TANKERKOENIG_API_KEY));
+  }
+}
+
+export default {
+  fetch: app.fetch,
+  scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runScheduled(event, env));
+  },
+};

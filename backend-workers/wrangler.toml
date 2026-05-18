@@ -22,15 +22,15 @@ database_id = "REPLACE_WITH_D1_ID"
 binding = "SNAPSHOTS"
 bucket_name = "gasolina-smart-snapshots"
 
-# --- Cron triggers (added in Phase 6 — kept here for reference) ---
-# [triggers]
-# crons = [
-#   "*/15 * * * *",   # ES every 15 min
-#   "*/30 * * * *",   # FR every 30 min
-#   "*/15 * * * *",   # GB every 15 min
-#   "*/15 * * * *",   # DE every 15 min
-#   "0 6 * * *",      # IT once daily at 06:00 UTC
-# ]
+# --- Cron triggers ---
+# Workers Free tier limits cron triggers to a handful of schedules per worker.
+# We use two: one frequent for ES/FR/GB/DE (each checks its own interval inside
+# the scheduled handler), and one daily for IT.
+[triggers]
+crons = [
+  "*/15 * * * *",   # every 15 min — dispatches ES, FR, GB, DE if their interval is due
+  "0 6 * * *",      # daily 06:00 UTC — IT
+]
 
 # --- Secrets (set via `wrangler secret put NAME`) ---
 # TANKERKOENIG_API_KEY — required for the DE fetcher (Phase 5)
