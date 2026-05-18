@@ -16,11 +16,15 @@ binding = "DB"
 database_name = "gasolina-smart-db"
 database_id = "f575dc0b-52bd-48a0-9c69-a0a27e0e7585"
 
-# --- R2 bucket (snapshots of station data per country) ---
-# Create with: wrangler r2 bucket create gasolina-smart-snapshots
-[[r2_buckets]]
-binding = "SNAPSHOTS"
-bucket_name = "gasolina-smart-snapshots"
+# --- R2 (optional, currently unused) ---
+# All data lives in D1 for now. If you ever want to store per-country snapshot
+# JSONs in R2 (cheaper reads if traffic grows), enable R2 in the dashboard,
+# create the bucket with `wrangler r2 bucket create gasolina-smart-snapshots`,
+# and uncomment the binding below.
+#
+# [[r2_buckets]]
+# binding = "SNAPSHOTS"
+# bucket_name = "gasolina-smart-snapshots"
 
 # --- Cron triggers ---
 # Workers Free tier limits cron triggers to a handful of schedules per worker.

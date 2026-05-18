@@ -26,7 +26,6 @@ const FETCH_INTERVALS = {
 
 export interface Env {
   DB: D1Database;
-  SNAPSHOTS: R2Bucket;
   TANKERKOENIG_API_KEY?: string;
 }
 

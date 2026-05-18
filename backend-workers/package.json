@@ -8,8 +8,7 @@
     "tail": "wrangler tail",
     "db:create": "wrangler d1 create gasolina-smart-db",
     "db:migrate": "wrangler d1 execute gasolina-smart-db --remote --file=./schema.sql",
-    "db:migrate-local": "wrangler d1 execute gasolina-smart-db --local --file=./schema.sql",
-    "r2:create": "wrangler r2 bucket create gasolina-smart-snapshots"
+    "db:migrate-local": "wrangler d1 execute gasolina-smart-db --local --file=./schema.sql"
   },
   "dependencies": {
     "hono": "^4.6.0"
@@ -17,6 +16,6 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",
     "typescript": "^5.5.0",
-    "wrangler": "^3.90.0"
+    "wrangler": "^4.92.0"
   }
 }
