@@ -75,6 +75,39 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
         return cost.contains("gratu") || cost.contains("free") || cost.contains("libre") || cost == "0"
     }
 
+    /// Set of normalised connector shortNames the station carries
+    /// ("CCS", "Type 2", "CHAdeMO", …). Empty when the data source didn't
+    /// report any connectors.
+    var connectorShortNames: Set<String> {
+        Set(connections.map { ChargingStation.normalizeConnectorShortName($0.typeName) })
+    }
+
+    /// True when the station has any connector compatible with `filter`.
+    /// Permissive: a station with no connector info at all still matches —
+    /// we'd rather show a possibly-compatible station than hide it because
+    /// OpenChargeMap didn't have the data.
+    func matchesConnectorFilter(_ filter: Set<String>) -> Bool {
+        if filter.isEmpty { return true }
+        if connections.isEmpty { return true }
+        return !connectorShortNames.isDisjoint(with: filter)
+    }
+
+    /// Canonicalises an OpenChargeMap typeName ("CCS (Type 2)",
+    /// "Type 2 (Tethered Connector)", "Tesla (Model S/X)", …) to one of the
+    /// short codes shown in the UI: "CCS", "CHAdeMO", "Type 2", "Type 1",
+    /// "NACS", "Schuko", "CEE", or the raw value as a fallback.
+    static func normalizeConnectorShortName(_ raw: String) -> String {
+        let name = raw.lowercased()
+        if name.contains("ccs") { return "CCS" }
+        if name.contains("chademo") { return "CHAdeMO" }
+        if name.contains("nacs") || name.contains("j3400") || name.contains("tesla") { return "NACS" }
+        if name.contains("type 2") || name.contains("mennekes") || name.contains("iec 62196-2") { return "Type 2" }
+        if name.contains("type 1") || name.contains("j1772") { return "Type 1" }
+        if name.contains("schuko") || name.contains("domestic") { return "Schuko" }
+        if name.contains("cee") { return "CEE" }
+        return raw
+    }
+
     static func parseCostPerKWh(_ raw: String) -> Decimal? {
         // Matches "0.35", "0,35", "0.35 €", "0,35 €/kWh", "EUR 0.35/kWh", etc.
         // Conservative: only returns a value when a kWh unit is mentioned.

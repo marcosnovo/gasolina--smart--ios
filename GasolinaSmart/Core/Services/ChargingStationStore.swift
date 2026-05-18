@@ -90,12 +90,18 @@ final class ChargingStationStore {
         }
     }
 
-    func nearbyStations(location: CLLocation, radiusKm: Double, limit: Int = 100) -> [ChargingStation] {
+    func nearbyStations(
+        location: CLLocation,
+        radiusKm: Double,
+        limit: Int = 100,
+        connectorFilter: Set<String> = []
+    ) -> [ChargingStation] {
         let radiusM = radiusKm * 1000
         let origin = location.coordinate
         let sorted = stations
             .compactMap { s -> (ChargingStation, Double)? in
                 guard s.isOperational else { return nil }
+                guard s.matchesConnectorFilter(connectorFilter) else { return nil }
                 let d = s.distanceKm(from: origin) * 1000
                 guard d <= radiusM else { return nil }
                 return (s, d)
@@ -122,10 +128,12 @@ final class ChargingStationStore {
         maxLatitude: Double,
         minLongitude: Double,
         maxLongitude: Double,
-        limit: Int = 30
+        limit: Int = 30,
+        connectorFilter: Set<String> = []
     ) -> ChargingSummary {
         var matches = stations.filter { s in
             s.isOperational
+                && s.matchesConnectorFilter(connectorFilter)
                 && s.latitude >= minLatitude && s.latitude <= maxLatitude
                 && s.longitude >= minLongitude && s.longitude <= maxLongitude
         }
@@ -163,13 +171,19 @@ final class ChargingStationStore {
     /// EV equivalent of StationStore.nearbySummary. The "cheapest" is the
     /// station with the lowest parsed €/kWh among nearby stations; if no
     /// nearby station advertises a price, falls back to the fastest charger.
-    func nearbySummary(location: CLLocation, radiusKm: Double, limit: Int = 100) -> ChargingSummary {
+    func nearbySummary(
+        location: CLLocation,
+        radiusKm: Double,
+        limit: Int = 100,
+        connectorFilter: Set<String> = []
+    ) -> ChargingSummary {
         let radiusM = radiusKm * 1000
         let origin = location.coordinate
 
         let nearby = stations
             .compactMap { s -> (station: ChargingStation, distance: Double)? in
                 guard s.isOperational else { return nil }
+                guard s.matchesConnectorFilter(connectorFilter) else { return nil }
                 let d = s.distanceKm(from: origin) * 1000
                 guard d <= radiusM else { return nil }
                 return (s, d)

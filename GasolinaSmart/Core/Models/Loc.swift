@@ -91,6 +91,8 @@ struct Loc {
     var listSpeed: String { s("Velocidad", "Speed", "Vitesse", "Geschwindigkeit", "Velocidade") }
     var listDistance: String { s("Distancia", "Distance", "Distance", "Entfernung", "Distância") }
     var chargingNoInfo: String { s("Sin información", "No information", "Aucune info", "Keine Angaben", "Sem informação") }
+    var chargingFullChargeCost: String { s("Coste de carga completa", "Full charge cost", "Coût charge complète", "Vollladekosten", "Custo carga completa") }
+    var chargingFastBadge: String { s("Rápida", "Fast", "Rapide", "Schnell", "Rápida") }
     func listResultsInRadius(_ count: Int, _ km: Int) -> String {
         s("\(count) en \(km) km", "\(count) within \(km) km", "\(count) dans \(km) km", "\(count) im Umkreis von \(km) km", "\(count) em \(km) km")
     }
@@ -356,7 +358,7 @@ struct Loc {
         case .fast: s("Carga rápida", "Fast charging", "Charge rapide", "Schnellladung", "Carga rápida")
         case .semiFast: s("Semi-rápida", "Semi-fast", "Semi-rapide", "Halbschnell", "Semi-rápida")
         case .slow: s("Carga lenta", "Slow charging", "Charge lente", "Langsames Laden", "Carga lenta")
-        case .unknown: s("Desconocida", "Unknown", "Inconnue", "Unbekannt", "Desconhecida")
+        case .unknown: s("Velocidad sin datos", "No speed data", "Vitesse inconnue", "Geschwindigkeit unbekannt", "Sem dados de velocidade")
         }
     }
 }

@@ -297,7 +297,8 @@ struct MapView: View {
         return chargingStore.nearbyStations(
             location: location,
             radiusKm: preferences.preferredRadiusKm,
-            limit: 200
+            limit: 200,
+            connectorFilter: preferences.selectedVehicle.preferredConnectors
         )
     }
 
@@ -512,7 +513,8 @@ struct MapView: View {
                 maxLatitude: area.maxLatitude,
                 minLongitude: area.minLongitude,
                 maxLongitude: area.maxLongitude,
-                limit: 30
+                limit: 30,
+                connectorFilter: preferences.selectedVehicle.preferredConnectors
             )
             visibleStations = []
             cachedCheapest = nil
@@ -614,7 +616,8 @@ struct MapView: View {
             let summary = chargingStore.nearbySummary(
                 location: location,
                 radiusKm: preferences.preferredRadiusKm,
-                limit: 200
+                limit: 200,
+                connectorFilter: preferences.selectedVehicle.preferredConnectors
             )
             if let cheapest = summary.cheapestStation {
                 ChargingRadarPanel(
@@ -825,9 +828,17 @@ struct MapView: View {
             visibleChargingStations = []
             return
         }
+        // For EVs we filter by the connector types the vehicle accepts so the
+        // map doesn't clutter with incompatible plugs. Charging-stations with
+        // no connector info are still shown — better to over-include than
+        // hide a possibly-compatible station.
+        let connectorFilter = preferences.selectedVehicle.isElectric
+            ? preferences.selectedVehicle.preferredConnectors
+            : []
         visibleChargingStations = chargingStore.nearbyStations(
             location: location,
-            radiusKm: preferences.preferredRadiusKm
+            radiusKm: preferences.preferredRadiusKm,
+            connectorFilter: connectorFilter
         )
     }
 
@@ -1431,10 +1442,25 @@ private struct ChargingListRow: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(station.operatorName.isEmpty ? station.name : station.operatorName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .lineLimit(1)
-                    .foregroundStyle(Color(.label))
+                HStack(spacing: 6) {
+                    Text(station.operatorName.isEmpty ? station.name : station.operatorName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(Color(.label))
+                    if station.speedCategory == .fast {
+                        HStack(spacing: 2) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(loc.chargingFastBadge)
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color(red: 0.10, green: 0.55, blue: 0.20))
+                        .clipShape(Capsule())
+                    }
+                }
 
                 HStack(spacing: 6) {
                     if let distance {
@@ -1546,35 +1572,31 @@ enum ChargingConnectorBadge {
     struct Visual { let symbol: String; let color: Color; let shortName: String }
 
     static func visual(for raw: String) -> Visual {
-        let name = raw.lowercased()
-        if name.contains("ccs") {
+        // Canonicalise once via the shared helper so all surfaces agree.
+        let canonical = ChargingStation.normalizeConnectorShortName(raw)
+        switch canonical {
+        case "CCS":
             return .init(symbol: "ev.plug.dc.ccs2", color: Color(red: 0.20, green: 0.45, blue: 0.85), shortName: "CCS")
-        }
-        if name.contains("chademo") {
+        case "CHAdeMO":
             return .init(symbol: "ev.plug.dc.chademo", color: Color(red: 0.85, green: 0.45, blue: 0.10), shortName: "CHAdeMO")
-        }
-        if name.contains("nacs") || name.contains("j3400") {
+        case "NACS":
             return .init(symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20), shortName: "NACS")
-        }
-        if name.contains("tesla") {
-            return .init(symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20), shortName: "Tesla")
-        }
-        if name.contains("type 2") || name.contains("mennekes") {
-            return .init(symbol: "ev.plug.ac.type2", color: Color(red: 0.10, green: 0.55, blue: 0.20), shortName: "Type 2")
-        }
-        if name.contains("type 1") || name.contains("j1772") {
-            return .init(symbol: "ev.plug.ac.gb.t", color: Color(red: 0.60, green: 0.30, blue: 0.70), shortName: "Type 1")
-        }
-        if name.contains("schuko") {
+        case "Type 2":
+            // ev.plug.ac.type2 doesn't render reliably across iOS versions;
+            // bolt.car.fill is a guaranteed-available EV-flavoured fallback.
+            return .init(symbol: "bolt.car.fill", color: Color(red: 0.10, green: 0.55, blue: 0.20), shortName: "Type 2")
+        case "Type 1":
+            return .init(symbol: "bolt.car.fill", color: Color(red: 0.60, green: 0.30, blue: 0.70), shortName: "Type 1")
+        case "Schuko":
             return .init(symbol: "powerplug.fill", color: Color(red: 0.40, green: 0.40, blue: 0.40), shortName: "Schuko")
-        }
-        if name.contains("cee") {
+        case "CEE":
             return .init(symbol: "powerplug.fill", color: Color(red: 0.85, green: 0.55, blue: 0.10), shortName: "CEE")
+        default:
+            return .init(symbol: "powerplug.fill", color: Color(.secondaryLabel), shortName: canonical)
         }
-        return .init(symbol: "powerplug.fill", color: Color(.secondaryLabel), shortName: raw)
     }
 
     static func shortName(for raw: String) -> String {
-        visual(for: raw).shortName
+        ChargingStation.normalizeConnectorShortName(raw)
     }
 }

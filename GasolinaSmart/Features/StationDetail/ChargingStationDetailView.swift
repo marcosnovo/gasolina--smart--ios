@@ -21,6 +21,7 @@ struct ChargingStationDetailView: View {
                 VStack(spacing: 12) {
                     heroSection
                     priceCard
+                    chargeCostCard
                     connectorsCard
                     infoCard
                     navigateButton
@@ -46,10 +47,25 @@ struct ChargingStationDetailView: View {
                         .foregroundStyle(.white)
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(station.operatorName.isEmpty ? station.name : station.operatorName)
-                        .font(.system(size: 24, weight: .bold))
-                        .tracking(-0.3)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(station.operatorName.isEmpty ? station.name : station.operatorName)
+                            .font(.system(size: 24, weight: .bold))
+                            .tracking(-0.3)
+                        if station.speedCategory == .fast {
+                            HStack(spacing: 3) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(loc.chargingFastBadge)
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color(red: 0.10, green: 0.55, blue: 0.20))
+                            .clipShape(Capsule())
+                        }
+                    }
                     HStack(spacing: 6) {
                         Circle()
                             .fill(speedColor)
@@ -191,20 +207,68 @@ struct ChargingStationDetailView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 10)
 
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
-                spacing: 10
-            ) {
-                ForEach(Array(station.connections.enumerated()), id: \.offset) { _, conn in
-                    connectorTile(conn)
+            if station.connections.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                    Text(loc.chargingNoInfo)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color(.secondaryLabel))
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+            } else {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
+                    spacing: 10
+                ) {
+                    ForEach(Array(station.connections.enumerated()), id: \.offset) { _, conn in
+                        connectorTile(conn)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 14)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 14)
         }
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
+    }
+
+    @ViewBuilder
+    private var chargeCostCard: some View {
+        if let price = station.pricePerKWh {
+            let kWh = preferences.selectedVehicle.batteryCapacityKWh ?? 50
+            let totalCost = price * Decimal(kWh)
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.Colors.charging.opacity(isDark ? 0.25 : 0.12))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "battery.100percent.bolt")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.charging)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(loc.chargingFullChargeCost)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(.secondaryLabel))
+                    Text("\(kWh, format: .number) kWh × \(price.priceFormatted) €/kWh")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+                Spacer()
+                Text(totalCost.savingFormatted)
+                    .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Theme.Colors.charging)
+            }
+            .padding(14)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 16)
+        }
     }
 
     private func connectorTile(_ conn: ChargingConnection) -> some View {

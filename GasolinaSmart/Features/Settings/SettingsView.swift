@@ -1271,8 +1271,10 @@ struct VehicleEditSheet: View {
     private static let connectorOptions: [ConnectorOption] = [
         .init(shortName: "CCS", symbol: "ev.plug.dc.ccs2", color: Color(red: 0.20, green: 0.45, blue: 0.85)),
         .init(shortName: "CHAdeMO", symbol: "ev.plug.dc.chademo", color: Color(red: 0.85, green: 0.45, blue: 0.10)),
-        .init(shortName: "Type 2", symbol: "ev.plug.ac.type2", color: Color(red: 0.10, green: 0.55, blue: 0.20)),
-        .init(shortName: "Type 1", symbol: "ev.plug.ac.gb.t", color: Color(red: 0.60, green: 0.30, blue: 0.70)),
+        // bolt.car.fill renders on all iOS versions; the ev.plug.ac.* symbols
+        // didn't render in our tests on iOS 17.x devices.
+        .init(shortName: "Type 2", symbol: "bolt.car.fill", color: Color(red: 0.10, green: 0.55, blue: 0.20)),
+        .init(shortName: "Type 1", symbol: "bolt.car.fill", color: Color(red: 0.60, green: 0.30, blue: 0.70)),
         .init(shortName: "NACS", symbol: "ev.plug.dc.nacs", color: Color(red: 0.80, green: 0.20, blue: 0.20)),
         .init(shortName: "Schuko", symbol: "powerplug.fill", color: Color(.secondaryLabel)),
     ]
