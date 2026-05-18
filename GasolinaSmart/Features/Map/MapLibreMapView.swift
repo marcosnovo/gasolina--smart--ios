@@ -40,6 +40,9 @@ struct MapLibreMapView: UIViewRepresentable {
     var selectedFuelType: FuelType = .gasolina95
     var cheapestPrice: Decimal?
     var onUserMovedMap: ((VisibleMapArea) -> Void)?
+    // When true, skip programmatic camera fits (cheapest-changed, initial fit, etc.).
+    // Used after 'Buscar en esta zona' so the map keeps the user's pan/zoom.
+    var suppressCameraFit: Bool = false
 
     private static let nearCheapestThreshold: Double = 1.02
 
@@ -108,7 +111,8 @@ struct MapLibreMapView: UIViewRepresentable {
             }
         }
 
-        if cheapestId != previousCheapestId, let cheapestId,
+        if !suppressCameraFit,
+           cheapestId != previousCheapestId, let cheapestId,
            let cheapestAnn = coordinator.annotationMap[cheapestId],
            let userCoord = mapView.userLocation?.coordinate,
            CLLocationCoordinate2DIsValid(userCoord) {

@@ -51,7 +51,8 @@ struct MapView: View {
                 cheapestPrice: cachedCheapest?.price(for: preferences.selectedFuelType),
                 onUserMovedMap: { area in
                     pendingArea = area
-                }
+                },
+                suppressCameraFit: isAreaMode
             )
             .ignoresSafeArea()
             .opacity(initialLoadComplete ? 1 : 0)
