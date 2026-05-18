@@ -868,7 +868,9 @@ class CheapestPinView: MLNAnnotationView {
     private let priceLabel = UILabel()
     private let tailLayer = CAShapeLayer()
     private let crownBadge = UIImageView()
+    private let shineLayer = CAGradientLayer()
     private var isPulsing = false
+    private var isShining = false
 
     private static let pillWidth: CGFloat = 68
     private static let pillHeight: CGFloat = 30
@@ -919,6 +921,26 @@ class CheapestPinView: MLNAnnotationView {
         ).cgPath
         addSubview(pillBackground)
 
+        // Shine layer: a diagonal white stripe that sweeps left→right across
+        // the pill every few seconds, like the glint on the Apple Pay button.
+        // Sits inside the pill so its rounded corners clip the stripe;
+        // doesn't interfere with the existing shadow which lives on
+        // pillBackground.layer directly.
+        shineLayer.frame = pillBackground.bounds
+        shineLayer.cornerRadius = Self.pillHeight / 2
+        shineLayer.masksToBounds = true
+        shineLayer.colors = [
+            UIColor.white.withAlphaComponent(0).cgColor,
+            UIColor.white.withAlphaComponent(0.55).cgColor,
+            UIColor.white.withAlphaComponent(0).cgColor,
+        ]
+        shineLayer.startPoint = CGPoint(x: 0, y: 0.3)
+        shineLayer.endPoint = CGPoint(x: 1, y: 0.7)
+        // Initial locations are off-screen left; the animation slides them
+        // off-screen right.
+        shineLayer.locations = [-0.5, -0.35, -0.2]
+        pillBackground.layer.addSublayer(shineLayer)
+
         priceLabel.frame = pillBackground.bounds
         priceLabel.textAlignment = .center
         priceLabel.font = .systemFont(ofSize: 14, weight: .bold)
@@ -968,12 +990,16 @@ class CheapestPinView: MLNAnnotationView {
         pulseRing2.isHidden = false
         layer.zPosition = 1000
         startPulse()
+        startShine()
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil && !pulseRing1.isHidden {
-            DispatchQueue.main.async { [weak self] in self?.startPulse() }
+            DispatchQueue.main.async { [weak self] in
+                self?.startPulse()
+                self?.startShine()
+            }
         }
     }
 
@@ -981,6 +1007,12 @@ class CheapestPinView: MLNAnnotationView {
         super.layoutSubviews()
         if !isPulsing && window != nil && !pulseRing1.isHidden {
             DispatchQueue.main.async { [weak self] in self?.startPulse() }
+        }
+        if shineLayer.frame.size != pillBackground.bounds.size {
+            shineLayer.frame = pillBackground.bounds
+        }
+        if !isShining && window != nil && !pulseRing1.isHidden {
+            DispatchQueue.main.async { [weak self] in self?.startShine() }
         }
     }
 
@@ -1022,10 +1054,41 @@ class CheapestPinView: MLNAnnotationView {
         pulseRing2.alpha = 0
     }
 
+    private func startShine() {
+        guard window != nil, !pulseRing1.isHidden else { return }
+        shineLayer.removeAnimation(forKey: "shine")
+        isShining = true
+
+        // Slide the gradient stripe across the pill, then leave it parked
+        // off-screen for the rest of the cycle. Total period of 3.2s keeps
+        // the effect "premium" rather than busy.
+        let sweep = CABasicAnimation(keyPath: "locations")
+        sweep.fromValue = [-0.5, -0.35, -0.2]
+        sweep.toValue = [1.2, 1.35, 1.5]
+        sweep.duration = 1.0
+        sweep.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        let group = CAAnimationGroup()
+        group.animations = [sweep]
+        group.duration = 3.2
+        group.repeatCount = .infinity
+        group.beginTime = CACurrentMediaTime()
+        group.isRemovedOnCompletion = false
+        group.fillMode = .forwards
+
+        shineLayer.add(group, forKey: "shine")
+    }
+
+    private func stopShine() {
+        isShining = false
+        shineLayer.removeAnimation(forKey: "shine")
+    }
+
     override func prepareForReuse() {
         super.prepareForReuse()
         isPulsing = false
         stopPulseAnimations()
+        stopShine()
         pulseRing1.isHidden = true
         pulseRing2.isHidden = true
         layer.zPosition = 0
