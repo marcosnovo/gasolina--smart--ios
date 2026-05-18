@@ -8,6 +8,9 @@ actor BackendAPIService {
     }()
 
     private var baseURL = "https://gasolina-smart-api.marcosnovo.workers.dev"
+    // gov.uk's edge filters Cloudflare Workers' outbound IPs (HTTP 525). Until
+    // that's resolved, UK requests route to the legacy Railway backend.
+    private let ukBaseURL = "https://gasolina-smart-ios-production.up.railway.app"
 
     private let session: URLSession
     private var lastHealthCheck: Date?
@@ -22,6 +25,18 @@ actor BackendAPIService {
 
     func setBaseURL(_ url: String) {
         baseURL = url
+    }
+
+    private func base(for country: Country?) -> String {
+        country == .uk ? ukBaseURL : baseURL
+    }
+
+    private func base(forStationId id: String) -> String {
+        if let prefix = id.split(separator: "_").first,
+           let country = Country(rawValue: String(prefix)) {
+            return base(for: country)
+        }
+        return baseURL
     }
 
     // MARK: - Stations Nearby
@@ -92,7 +107,7 @@ actor BackendAPIService {
         fuelType: FuelType? = nil,
         limit: Int = 50
     ) async throws -> StationsResponse {
-        var components = URLComponents(string: "\(baseURL)/api/stations")!
+        var components = URLComponents(string: "\(base(for: country))/api/stations")!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(latitude)),
             URLQueryItem(name: "lon", value: String(longitude)),
@@ -127,7 +142,7 @@ actor BackendAPIService {
         fuelType: FuelType,
         country: Country = .spain
     ) async throws -> CheapestResponse {
-        var components = URLComponents(string: "\(baseURL)/api/stations/cheapest")!
+        var components = URLComponents(string: "\(base(for: country))/api/stations/cheapest")!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(latitude)),
             URLQueryItem(name: "lon", value: String(longitude)),
@@ -149,7 +164,7 @@ actor BackendAPIService {
     }
 
     func fetchStationDetail(id: String) async throws -> StationDTO {
-        guard let url = URL(string: "\(baseURL)/api/stations/\(id)") else {
+        guard let url = URL(string: "\(base(forStationId: id))/api/stations/\(id)") else {
             throw BackendError.invalidURL
         }
         let (data, response) = try await session.data(from: url)
@@ -163,11 +178,12 @@ actor BackendAPIService {
     struct MetaResponse: Decodable, Sendable {
         let last_fetch: String?
         let station_count: Int
-        let fetch_interval_minutes: Int
+        // Workers backend doesn't return this; Railway does. Optional so both work.
+        let fetch_interval_minutes: Int?
     }
 
     func fetchMeta(country: Country = .spain) async throws -> MetaResponse {
-        var components = URLComponents(string: "\(baseURL)/api/meta")!
+        var components = URLComponents(string: "\(base(for: country))/api/meta")!
         components.queryItems = [
             URLQueryItem(name: "country", value: country.rawValue),
         ]
@@ -215,7 +231,7 @@ actor BackendAPIService {
     }
 
     func fetchPriceHistory(stationId: String, days: Int = 30) async throws -> [PriceHistoryEntry] {
-        var components = URLComponents(string: "\(baseURL)/api/history/\(stationId)")!
+        var components = URLComponents(string: "\(base(forStationId: stationId))/api/history/\(stationId)")!
         components.queryItems = [
             URLQueryItem(name: "days", value: String(days)),
         ]
