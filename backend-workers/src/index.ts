@@ -19,16 +19,12 @@ import { fetchFrance, shouldFetchFrance } from "./fetchers/france";
 import { fetchUK, shouldFetchUK } from "./fetchers/uk";
 import { fetchGermany, shouldFetchGermany } from "./fetchers/germany";
 import { fetchItaly } from "./fetchers/italy";
-import { fetchMexico, shouldFetchMexico } from "./fetchers/mexico";
 
 const FETCH_INTERVALS = {
   ES: 15,
   FR: 30,
   GB: 15,
   DE: 15,
-  // CRE publishes once a day, so 12h is plenty of margin. Doing more
-  // wouldn't surface new data and would waste D1 writes.
-  MX: 12 * 60,
 } as const;
 
 export interface Env {
@@ -273,9 +269,6 @@ app.post("/api/fetch", async (c) => {
       case "IT":
         result = await fetchItaly(c.env.DB);
         break;
-      case "MX":
-        result = await fetchMexico(c.env.DB);
-        break;
       default:
         return c.json({ success: false, error: `Unknown country: ${country}` }, 400);
     }
@@ -324,12 +317,7 @@ async function runScheduled(event: ScheduledController, env: Env): Promise<void>
     console.log("[cron] Daily IT + EV charging trigger");
     await runFetcher(env.DB, "IT", () => fetchItaly(env.DB));
 
-    // Daily Mexico fuel-price refresh — the CRE publishes once a day.
-    if (await shouldFetchMexico(env.DB, FETCH_INTERVALS.MX)) {
-      await runFetcher(env.DB, "MX", () => fetchMexico(env.DB));
-    }
-
-    for (const country of ["ES", "FR", "GB", "DE", "IT", "US", "MX"]) {
+    for (const country of ["ES", "FR", "GB", "DE", "IT", "US"]) {
       if (await shouldFetchChargingStations(env.DB, country, 60 * 12)) {
         await runFetcher(env.DB, country, () =>
           fetchOpenChargeMap(env.DB, country, env.OPENCHARGEMAP_API_KEY)

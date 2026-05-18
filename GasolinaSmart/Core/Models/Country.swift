@@ -36,7 +36,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
     case germany = "DE"
     case italy = "IT"
     case usa = "US"
-    case mexico = "MX"
 
     var id: String { rawValue }
 
@@ -48,7 +47,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .germany: "Deutschland"
         case .italy: "Italia"
         case .usa: "United States"
-        case .mexico: "México"
         }
     }
 
@@ -60,7 +58,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .germany: "🇩🇪"
         case .italy: "🇮🇹"
         case .usa: "🇺🇸"
-        case .mexico: "🇲🇽"
         }
     }
 
@@ -69,7 +66,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .spain, .france, .germany, .italy: "EUR"
         case .uk: "GBP"
         case .usa: "USD"
-        case .mexico: "MXN"
         }
     }
 
@@ -77,7 +73,7 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .spain, .france, .germany, .italy: "€"
         case .uk: "£"
-        case .usa, .mexico: "$"
+        case .usa: "$"
         }
     }
 
@@ -90,7 +86,7 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
     /// fuel UI and force charging-mode for fuel-less countries.
     var hasFuelData: Bool {
         switch self {
-        case .spain, .uk, .france, .germany, .italy, .mexico: true
+        case .spain, .uk, .france, .germany, .italy: true
         case .usa: false
         }
     }
@@ -102,7 +98,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .france: .e10
         case .germany: .e10
         case .italy: .e5
-        case .mexico: .gasolina95 // CRE's "regular" (Magna, 87 octanos)
         // USA never reads this (no fuel UI), but the switch must be
         // exhaustive — pick gasoline 95 as a harmless placeholder.
         case .usa: .gasolina95
@@ -121,10 +116,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
             [.e5, .e10, .dieselA]
         case .italy:
             [.e5, .gasolina98, .dieselA, .dieselPremium, .glp, .gnc]
-        case .mexico:
-            // CRE only publishes regular / premium / diesel; we map them
-            // to the closest shared enum cases.
-            [.gasolina95, .gasolina98, .dieselA]
         case .usa:
             []
         }
@@ -146,8 +137,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
             // Covers CONUS only; AK / HI users need to pick US manually
             // from settings rather than relying on auto-detect.
             BoundingBox(minLatitude: 24.5, maxLatitude: 49.5, minLongitude: -125, maxLongitude: -66.5)
-        case .mexico:
-            BoundingBox(minLatitude: 14.5, maxLatitude: 32.8, minLongitude: -118.5, maxLongitude: -86.5)
         }
     }
 
@@ -156,7 +145,7 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .germany: .realtime
         case .uk: .within30min
         case .spain, .france: .within1hour
-        case .italy, .usa, .mexico: .daily
+        case .italy, .usa: .daily
         }
     }
 
@@ -168,7 +157,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .germany: CLLocationCoordinate2D(latitude: 52.5200, longitude: 13.4050)
         case .italy: CLLocationCoordinate2D(latitude: 41.9028, longitude: 12.4964)
         case .usa: CLLocationCoordinate2D(latitude: 39.5, longitude: -98.35) // geographic center of CONUS
-        case .mexico: CLLocationCoordinate2D(latitude: 19.4326, longitude: -99.1332) // Ciudad de México
         }
     }
 
@@ -188,8 +176,6 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
             "Ministero delle Imprese e del Made in Italy (MIMIT).\nLicenza IODL 2.0"
         case .usa:
             "Charging data © OpenChargeMap contributors,\nlicensed under CC BY-SA 4.0"
-        case .mexico:
-            "Comisión Reguladora de Energía (CRE).\nDatos abiertos: datos.gob.mx"
         }
     }
 
