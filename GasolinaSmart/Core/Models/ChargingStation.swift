@@ -50,13 +50,18 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
 
     var speedCategory: SpeedCategory {
         if let maxPower = maxPowerKW {
-            if maxPower >= 50 { return .fast }
-            if maxPower >= 22 { return .semiFast }
+            // 22 kW is the practical "useful for a quick top-up" floor. Most
+            // urban public chargers in Spain sit at 22 kW AC; 50 kW+ are
+            // DC fast. We collapse both into .fast so the green pill /
+            // bolt badge actually fires for the chargers a driver cares
+            // about, instead of only DC fast which is rare in mixed-use
+            // areas. Anything below 22 kW remains slow/semi.
+            if maxPower >= 22 { return .fast }
+            if maxPower >= 11 { return .semiFast }
             return .slow
         }
         // When OpenChargeMap doesn't report kW, infer from the connector type:
-        // CCS / CHAdeMO / NACS are always DC fast plugs. Iterate directly to
-        // avoid allocating a Set per call.
+        // CCS / CHAdeMO / NACS are always DC fast plugs.
         for conn in connections {
             let short = ChargingStation.normalizeConnectorShortName(conn.typeName)
             if short == "CCS" || short == "CHAdeMO" || short == "NACS" {

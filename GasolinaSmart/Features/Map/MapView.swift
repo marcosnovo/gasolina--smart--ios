@@ -196,8 +196,17 @@ struct MapView: View {
             visibleStations = []
             cachedCheapest = nil
             cachedAveragePrice = nil
+            visibleChargingStations = []
+            cachedChargingSummary = nil
             Task {
                 await store.loadAllCountryStations()
+                if preferences.effectiveShowChargingStations {
+                    // Charging snapshot is country-scoped too; reload for the
+                    // new country and refresh the EV radar.
+                    await chargingStore.loadAllCountryStations(country: newCountry, force: true)
+                    updateChargingStations()
+                    updateChargingSummary()
+                }
             }
         }
         .onChange(of: preferences.enabledNavigationApps) { _, _ in
@@ -689,6 +698,8 @@ struct MapView: View {
             limit: 200,
             connectorFilter: preferences.selectedVehicle.preferredConnectors
         )
+        // Keep the home-screen widget in sync with the EV radar card.
+        updateWidgetData(location: location)
     }
 
     private var loadingPill: some View {
@@ -832,6 +843,30 @@ struct MapView: View {
     }
 
     private func updateWidgetData(location: CLLocation) {
+        if preferences.selectedVehicle.isElectric {
+            // EV path: push the cheapest charging point into the same widget
+            // slot so users get a consistent "tap to navigate" experience
+            // regardless of vehicle type.
+            guard let cheapest = cachedChargingSummary?.cheapestStation else { return }
+            let navURL = NavigationHelper.navigationURL(
+                latitude: cheapest.latitude,
+                longitude: cheapest.longitude,
+                app: preferences.preferredNavigationApp
+            )
+            WidgetDataProvider.updateForCharging(
+                cheapest: cheapest,
+                averagePricePerKWh: cachedChargingSummary?.averagePricePerKWh,
+                batteryCapacityKWh: preferences.selectedVehicle.batteryCapacityKWh,
+                userLocation: location,
+                vehicle: preferences.selectedVehicle,
+                radiusKm: preferences.preferredRadiusKm,
+                stationCount: visibleChargingStations.count,
+                isDarkMode: preferences.appearance == .dark,
+                navigationURLString: navURL.absoluteString
+            )
+            return
+        }
+
         guard let cheapest = cachedCheapest else { return }
         let navURL = NavigationHelper.navigationURL(
             latitude: cheapest.latitude,
