@@ -349,9 +349,37 @@ final class UserPreferences {
         } else {
             defaults.removeObject(forKey: "fuelFilterOverride")
         }
-        let shared = UserDefaults(suiteName: "group.MarcosNovo.GasolinaSmart")
+        let shared = UserDefaults(suiteName: WidgetConstants.appGroupId)
         shared?.set(appLanguage.rawValue, forKey: "appLanguage")
         shared?.set(selectedCountry.rawValue, forKey: "selectedCountry")
+
+        // Publish the vehicle list to the App Group so the widget editor
+        // can offer the user's coches in the configuration picker.
+        let vehicleSummaries = vehicles.map {
+            WidgetVehicleSummary(
+                id: $0.id.uuidString,
+                name: $0.name,
+                fuelTypeRaw: $0.fuelType.rawValue,
+                vehicleTypeRaw: $0.vehicleType.rawValue,
+                vehicleColorRaw: $0.vehicleColor.rawValue,
+                isElectric: $0.isElectric
+            )
+        }
+        if let data = try? encoder.encode(vehicleSummaries) {
+            shared?.set(data, forKey: WidgetConstants.vehiclesKey)
+        }
+
+        // Same for supported fuels of the currently-active country.
+        let fuelSummaries = selectedCountry.supportedFuelTypes.map {
+            WidgetFuelSummary(
+                raw: $0.rawValue,
+                displayName: $0.displayName(for: selectedCountry),
+                shortLabel: $0.shortLabel(for: selectedCountry)
+            )
+        }
+        if let data = try? encoder.encode(fuelSummaries) {
+            shared?.set(data, forKey: WidgetConstants.supportedFuelsKey)
+        }
     }
 }
 

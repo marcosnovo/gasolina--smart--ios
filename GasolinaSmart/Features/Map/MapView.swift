@@ -168,6 +168,10 @@ struct MapView: View {
         .onChange(of: store.allStations) { _, _ in
             updateVisibleStations()
             markReadyIfNeeded()
+            // Country snapshot landed → refresh widget data for every
+            // vehicle the user has, so widgets bound to a non-active
+            // vehicle aren't stale.
+            refreshWidgetSnapshotsForAllVehicles()
         }
         .onChange(of: preferences.preferredRadiusKm) { _, _ in
             exitAreaMode()
@@ -940,6 +944,26 @@ struct MapView: View {
             stationCount: visibleStations.count,
             isDarkMode: preferences.appearance == .dark,
             navigationURLString: navURL.absoluteString
+        )
+    }
+
+    /// Recomputes the per-vehicle and per-fuel widget snapshots from the
+    /// already-loaded `store.allStations`, so widgets pinned to a
+    /// non-active vehicle stay fresh too. No network involved — pure
+    /// in-memory filter pass through the country snapshot. Skipped when
+    /// the country has no fuel data (US, charging-only).
+    private func refreshWidgetSnapshotsForAllVehicles() {
+        guard preferences.selectedCountry.hasFuelData else { return }
+        guard let location = locationManager.location else { return }
+        guard !store.allStations.isEmpty else { return }
+        WidgetDataProvider.refreshAllSnapshots(
+            vehicles: preferences.vehicles,
+            allStations: store.allStations,
+            country: preferences.selectedCountry,
+            userLocation: location,
+            radiusKm: preferences.preferredRadiusKm,
+            isDarkMode: preferences.appearance == .dark,
+            navigationApp: preferences.preferredNavigationApp
         )
     }
 

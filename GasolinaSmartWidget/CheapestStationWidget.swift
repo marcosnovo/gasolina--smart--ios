@@ -1,3 +1,4 @@
+import AppIntents
 import WidgetKit
 import SwiftUI
 
@@ -9,34 +10,58 @@ struct CheapestStationEntry: TimelineEntry {
     let isDark: Bool
 }
 
-// MARK: - Provider
+// MARK: - Provider (configurable via App Intents)
 
-struct CheapestStationProvider: TimelineProvider {
+struct ConfigurableCheapestProvider: AppIntentTimelineProvider {
+    typealias Intent = CheapestStationConfigurationIntent
+    typealias Entry = CheapestStationEntry
+
     let isDark: Bool
 
     func placeholder(in context: Context) -> CheapestStationEntry {
         CheapestStationEntry(date: .now, data: .placeholder, isDark: isDark)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (CheapestStationEntry) -> Void) {
-        let data = readWidgetData()
-        completion(CheapestStationEntry(date: .now, data: data ?? .placeholder, isDark: isDark))
+    func snapshot(for configuration: CheapestStationConfigurationIntent, in context: Context) async -> CheapestStationEntry {
+        let data = readWidgetData(for: configuration) ?? .placeholder
+        return CheapestStationEntry(date: .now, data: data, isDark: isDark)
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<CheapestStationEntry>) -> Void) {
-        let data = readWidgetData()
+    func timeline(for configuration: CheapestStationConfigurationIntent, in context: Context) async -> Timeline<CheapestStationEntry> {
+        let data = readWidgetData(for: configuration)
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 30, to: .now)!
         let entry = CheapestStationEntry(date: .now, data: data, isDark: isDark)
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        return Timeline(entries: [entry], policy: .after(nextUpdate))
     }
 
-    private func readWidgetData() -> WidgetStationData? {
-        guard let defaults = UserDefaults(suiteName: WidgetConstants.appGroupId),
-              let data = defaults.data(forKey: WidgetConstants.widgetDataKey),
-              let decoded = try? JSONDecoder().decode(WidgetStationData.self, from: data) else {
-            return nil
+    /// Resolves which snapshot key to read for the given configuration.
+    /// Vehicle wins over fuel (a vehicle already implies a fuel); both
+    /// blank falls back to the default key — same behaviour as the old
+    /// static widget.
+    private func readWidgetData(for configuration: CheapestStationConfigurationIntent) -> WidgetStationData? {
+        guard let defaults = UserDefaults(suiteName: WidgetConstants.appGroupId) else { return nil }
+
+        let key: String
+        if let vehicle = configuration.vehicle {
+            key = WidgetConstants.vehicleSnapshotKey(vehicle.id)
+        } else if let fuel = configuration.fuel {
+            key = WidgetConstants.fuelSnapshotKey(fuel.id)
+        } else {
+            key = WidgetConstants.widgetDataKey
         }
-        return decoded
+
+        if let data = defaults.data(forKey: key),
+           let decoded = try? JSONDecoder().decode(WidgetStationData.self, from: data) {
+            return decoded
+        }
+        // Fall back to the default snapshot when the configured-for snapshot
+        // hasn't been computed yet (e.g. brand-new vehicle, app hasn't run
+        // since adding it).
+        if let data = defaults.data(forKey: WidgetConstants.widgetDataKey),
+           let decoded = try? JSONDecoder().decode(WidgetStationData.self, from: data) {
+            return decoded
+        }
+        return nil
     }
 }
 
@@ -46,7 +71,11 @@ struct CheapestStationDarkWidget: Widget {
     let kind = "CheapestStationDarkWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: CheapestStationProvider(isDark: true)) { entry in
+        AppIntentConfiguration(
+            kind: kind,
+            intent: CheapestStationConfigurationIntent.self,
+            provider: ConfigurableCheapestProvider(isDark: true)
+        ) { entry in
             CheapestStationWidgetView(entry: entry)
                 .containerBackground(for: .widget) { Color.clear }
         }
@@ -63,7 +92,11 @@ struct CheapestStationLightWidget: Widget {
     let kind = "CheapestStationLightWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: CheapestStationProvider(isDark: false)) { entry in
+        AppIntentConfiguration(
+            kind: kind,
+            intent: CheapestStationConfigurationIntent.self,
+            provider: ConfigurableCheapestProvider(isDark: false)
+        ) { entry in
             CheapestStationWidgetView(entry: entry)
                 .containerBackground(for: .widget) { Color.clear }
         }

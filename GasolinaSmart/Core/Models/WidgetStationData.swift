@@ -2,8 +2,49 @@ import Foundation
 
 enum WidgetConstants {
     static let appGroupId = "group.MarcosNovo.GasolinaSmart"
+    /// Default snapshot. Used by widgets without a per-vehicle / per-fuel
+    /// configuration, plus as a fallback for newly-installed widgets.
     static let widgetDataKey = "widget_station_data"
     static let urlScheme = "gasolinasmart"
+
+    /// App-group key under which the main app publishes the list of
+    /// vehicles a user has, so the widget editor can offer them in its
+    /// configuration picker.
+    static let vehiclesKey = "widget_vehicles"
+
+    /// App-group key under which the main app publishes the fuels
+    /// supported by the active country, again to feed the widget editor's
+    /// fuel picker.
+    static let supportedFuelsKey = "widget_supported_fuels"
+
+    /// Snapshot keys used when the widget is configured for a specific
+    /// vehicle or a specific fuel.
+    static func vehicleSnapshotKey(_ vehicleId: String) -> String {
+        "widget_data:vehicle:\(vehicleId)"
+    }
+    static func fuelSnapshotKey(_ fuelRaw: String) -> String {
+        "widget_data:fuel:\(fuelRaw)"
+    }
+}
+
+/// Compact vehicle summary the main app publishes to the App Group so
+/// the widget editor can list the user's vehicles. Mirrors only the
+/// fields the picker / preview UI needs.
+struct WidgetVehicleSummary: Codable, Hashable {
+    let id: String
+    let name: String
+    let fuelTypeRaw: String
+    let vehicleTypeRaw: String
+    let vehicleColorRaw: String
+    let isElectric: Bool
+}
+
+/// Compact fuel descriptor for the widget's fuel picker, pre-localised
+/// for the user's active country.
+struct WidgetFuelSummary: Codable, Hashable {
+    let raw: String
+    let displayName: String
+    let shortLabel: String
 }
 
 struct WidgetStationData: Codable, Equatable {
