@@ -969,6 +969,7 @@ struct VehicleEditSheet: View {
     @State private var fuelType: FuelType
     @State private var hasGLP: Bool
     @State private var isElectric: Bool
+    @State private var batteryCapacityKWh: Double
     @State private var tankSize: Double
     @State private var consumptionL100Km: Double
     @State private var vehicleType: VehicleType
@@ -985,6 +986,7 @@ struct VehicleEditSheet: View {
         _fuelType = State(initialValue: v.fuelType)
         _hasGLP = State(initialValue: v.hasGLP)
         _isElectric = State(initialValue: v.isElectric)
+        _batteryCapacityKWh = State(initialValue: v.batteryCapacityKWh ?? 50)
         _tankSize = State(initialValue: v.tankSizeLiters)
         _consumptionL100Km = State(initialValue: v.consumptionL100Km)
         _vehicleType = State(initialValue: v.vehicleType)
@@ -1004,8 +1006,7 @@ struct VehicleEditSheet: View {
                 colorSection
                 engineTypeSection
                 if isElectric {
-                    // Future EV-specific sections (battery capacity, connectors)
-                    // will land here in Phase 2C.
+                    batterySection
                 } else {
                     fuelSection
                     tankSection
@@ -1035,6 +1036,7 @@ struct VehicleEditSheet: View {
     private var previewVehicle: Vehicle {
         Vehicle(name: name, brand: brand, fuelType: fuelType, hasGLP: hasGLP,
                 isElectric: isElectric,
+                batteryCapacityKWh: isElectric ? batteryCapacityKWh : nil,
                 tankSizeLiters: tankSize, consumptionL100Km: consumptionL100Km,
                 vehicleType: vehicleType, vehicleColor: vehicleColor)
     }
@@ -1190,6 +1192,25 @@ struct VehicleEditSheet: View {
         }
     }
 
+    private var batterySection: some View {
+        Section {
+            HStack {
+                Text(loc.vehicleBatteryCapacity)
+                Spacer()
+                TextField("kWh", value: $batteryCapacityKWh, format: .number.precision(.fractionLength(0...1)))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 80)
+                Text("kWh")
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+        } header: {
+            Text(loc.vehicleBatteryCapacity)
+        } footer: {
+            Text(loc.vehicleBatteryCapacityHint)
+        }
+    }
+
     private var pickablePrimaryFuels: [FuelType] {
         // GLP is handled by the separate toggle; the picker is exclusively for
         // gasoline / diesel options.
@@ -1316,6 +1337,7 @@ struct VehicleEditSheet: View {
             fuelType: fuelType,
             hasGLP: hasGLP,
             isElectric: isElectric,
+            batteryCapacityKWh: isElectric ? batteryCapacityKWh : nil,
             tankSizeLiters: tankSize,
             consumptionL100Km: consumptionL100Km,
             vehicleType: vehicleType,

@@ -186,20 +186,30 @@ struct ChargingRadarPanel: View {
 
     private var pricePerKWh: Decimal? { station.pricePerKWh }
 
-    private var savingPerKWh: Decimal? {
+    /// Saving vs the zone average for a full charge of this vehicle's battery.
+    /// Falls back to per-kWh saving if the user hasn't set a battery capacity.
+    private var savingForFullCharge: Decimal? {
         guard let price = pricePerKWh, let avg = averagePricePerKWh else { return nil }
         let diff = avg - price
-        return diff > 0 ? diff : nil
+        guard diff > 0 else { return nil }
+        let kWh = preferences.selectedVehicle.batteryCapacityKWh ?? 50
+        return diff * Decimal(kWh)
+    }
+
+    private var fullChargeCost: Decimal? {
+        guard let price = pricePerKWh else { return nil }
+        let kWh = preferences.selectedVehicle.batteryCapacityKWh ?? 50
+        return price * Decimal(kWh)
     }
 
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                if let savingPerKWh {
+                if let savingForFullCharge {
                     HStack(spacing: 3) {
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.system(size: 9))
-                        Text("-\(savingPerKWh.priceFormatted) €/kWh")
+                        Text(savingForFullCharge.savingFormatted)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                     }
                     .foregroundStyle(Theme.Colors.charging)
