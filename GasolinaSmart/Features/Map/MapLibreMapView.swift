@@ -6,6 +6,13 @@ class StationPointAnnotation: MLNPointAnnotation {
     var station: FuelStation?
     var isCheapest = false
     var isFavorite = false
+    var priceText: String?
+    var tier: PriceTier = .normal
+}
+
+enum PriceTier {
+    case normal
+    case nearCheapest
 }
 
 class ChargingPointAnnotation: MLNPointAnnotation {
@@ -23,6 +30,10 @@ struct MapLibreMapView: UIViewRepresentable {
     var zoomRadiusKm: Double?
     var zoomRadiusCounter: Int
     var isDarkMode: Bool = false
+    var selectedFuelType: FuelType = .gasolina95
+    var cheapestPrice: Decimal?
+
+    private static let nearCheapestThreshold: Double = 1.02
 
     static let lightStyleURL = URL(string: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json")!
     static let darkStyleURL = URL(string: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json")!
@@ -140,6 +151,8 @@ struct MapLibreMapView: UIViewRepresentable {
                     ann.station = station
                     ann.isCheapest = station.id == parent.cheapestId
                     ann.isFavorite = parent.favoriteIds.contains(station.id)
+                    ann.priceText = priceText(for: station)
+                    ann.tier = priceTier(for: station)
                     annotationMap[station.id] = ann
                     annsToAdd.append(ann)
                 }
@@ -150,16 +163,25 @@ struct MapLibreMapView: UIViewRepresentable {
                 guard let existing = annotationMap[station.id] else { continue }
                 let isCheapest = station.id == parent.cheapestId
                 let isFavorite = parent.favoriteIds.contains(station.id)
+                let newPriceText = priceText(for: station)
+                let newTier = priceTier(for: station)
                 existing.station = station
                 if existing.coordinate.latitude != station.latitude || existing.coordinate.longitude != station.longitude {
                     existing.coordinate = station.coordinate
                 }
-                let changed = existing.isCheapest != isCheapest || existing.isFavorite != isFavorite
+                let changed = existing.isCheapest != isCheapest
+                    || existing.isFavorite != isFavorite
+                    || existing.priceText != newPriceText
+                    || existing.tier != newTier
                 existing.isCheapest = isCheapest
                 existing.isFavorite = isFavorite
-                if (changed || needsFullReconfigure) && !isCheapest {
-                    if let view = mapView.view(for: existing) as? LightPinView {
-                        view.configure(image: isFavorite ? LightPinView.favoriteImage : LightPinView.regularImage)
+                existing.priceText = newPriceText
+                existing.tier = newTier
+                if changed || needsFullReconfigure {
+                    if isCheapest, let view = mapView.view(for: existing) as? CheapestPinView {
+                        view.configure(price: newPriceText ?? "—")
+                    } else if let view = mapView.view(for: existing) as? PricePinView {
+                        view.configure(price: newPriceText ?? "—", tier: newTier, isFavorite: isFavorite)
                     }
                 }
             }
@@ -266,16 +288,35 @@ struct MapLibreMapView: UIViewRepresentable {
                 let reuseId = "cheapest"
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) as? CheapestPinView
                     ?? CheapestPinView(reuseIdentifier: reuseId)
+                view.configure(price: stationAnn.priceText ?? "—")
                 view.activate()
                 return view
             }
 
-            let reuseId = "light_pin"
-            let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) as? LightPinView
-                ?? LightPinView(reuseIdentifier: reuseId)
-            let image = stationAnn.isFavorite ? LightPinView.favoriteImage : LightPinView.regularImage
-            view.configure(image: image)
+            let reuseId = "price_pin"
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) as? PricePinView
+                ?? PricePinView(reuseIdentifier: reuseId)
+            view.configure(
+                price: stationAnn.priceText ?? "—",
+                tier: stationAnn.tier,
+                isFavorite: stationAnn.isFavorite
+            )
             return view
+        }
+
+        // MARK: - Price Helpers
+
+        private func priceText(for station: FuelStation) -> String? {
+            guard let price = station.price(for: parent.selectedFuelType) else { return nil }
+            return price.priceFormatted
+        }
+
+        private func priceTier(for station: FuelStation) -> PriceTier {
+            guard let cheapest = parent.cheapestPrice,
+                  let price = station.price(for: parent.selectedFuelType),
+                  station.id != parent.cheapestId else { return .normal }
+            let ratio = NSDecimalNumber(decimal: price / cheapest).doubleValue
+            return ratio <= MapLibreMapView.nearCheapestThreshold ? .nearCheapest : .normal
         }
 
         func mapView(_ mapView: MLNMapView, didSelect annotation: any MLNAnnotation) {
@@ -295,9 +336,12 @@ struct MapLibreMapView: UIViewRepresentable {
 
         func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
             for (_, ann) in annotationMap {
-                if let view = mapView.view(for: ann) as? LightPinView {
-                    let image = ann.isFavorite ? LightPinView.favoriteImage : LightPinView.regularImage
-                    view.configure(image: image)
+                if let view = mapView.view(for: ann) as? PricePinView {
+                    view.configure(
+                        price: ann.priceText ?? "—",
+                        tier: ann.tier,
+                        isFavorite: ann.isFavorite
+                    )
                 }
             }
         }
@@ -485,53 +529,213 @@ class LightPinView: MLNAnnotationView {
     }
 }
 
+// MARK: - Price Pin (compact pill with price + favorite badge)
+
+class PricePinView: MLNAnnotationView {
+    private let pillBackground = UIView()
+    private let priceLabel = UILabel()
+    private let tailLayer = CAShapeLayer()
+    private let starBadge = UIImageView()
+    private let borderLayer = CALayer()
+
+    private static let pillWidth: CGFloat = 56
+    private static let pillHeight: CGFloat = 24
+    private static let tailHeight: CGFloat = 6
+    private static let viewWidth: CGFloat = 60
+    private static let viewHeight: CGFloat = 36
+
+    private static let starImage: UIImage? = UIImage(systemName: "star.fill",
+        withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .bold))?
+        .withTintColor(UIColor(red: 0.95, green: 0.78, blue: 0.0, alpha: 1), renderingMode: .alwaysOriginal)
+
+    override init(reuseIdentifier: String?) {
+        super.init(reuseIdentifier: reuseIdentifier)
+        let w = Self.viewWidth
+        let h = Self.viewHeight
+        frame = CGRect(x: 0, y: 0, width: w, height: h)
+        centerOffset = CGVector(dx: 0, dy: -h / 2)
+        isOpaque = false
+        backgroundColor = .clear
+
+        let pillX = (w - Self.pillWidth) / 2
+        pillBackground.frame = CGRect(x: pillX, y: 2, width: Self.pillWidth, height: Self.pillHeight)
+        pillBackground.layer.cornerRadius = Self.pillHeight / 2
+        pillBackground.layer.shadowColor = UIColor.black.cgColor
+        pillBackground.layer.shadowOpacity = 0.22
+        pillBackground.layer.shadowOffset = CGSize(width: 0, height: 1.5)
+        pillBackground.layer.shadowRadius = 2.5
+        pillBackground.layer.shadowPath = UIBezierPath(
+            roundedRect: CGRect(origin: .zero, size: pillBackground.bounds.size),
+            cornerRadius: Self.pillHeight / 2
+        ).cgPath
+        addSubview(pillBackground)
+
+        priceLabel.frame = pillBackground.bounds
+        priceLabel.textAlignment = .center
+        priceLabel.font = .systemFont(ofSize: 12, weight: .bold)
+        priceLabel.adjustsFontSizeToFitWidth = true
+        priceLabel.minimumScaleFactor = 0.8
+        pillBackground.addSubview(priceLabel)
+
+        let tailW: CGFloat = 8
+        let tailTop = pillBackground.frame.maxY - 1
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: w / 2 - tailW / 2, y: tailTop))
+        path.addLine(to: CGPoint(x: w / 2, y: tailTop + Self.tailHeight))
+        path.addLine(to: CGPoint(x: w / 2 + tailW / 2, y: tailTop))
+        path.close()
+        tailLayer.path = path.cgPath
+        tailLayer.shadowColor = UIColor.black.cgColor
+        tailLayer.shadowOpacity = 0.18
+        tailLayer.shadowOffset = CGSize(width: 0, height: 1.5)
+        tailLayer.shadowRadius = 2
+        layer.insertSublayer(tailLayer, below: pillBackground.layer)
+
+        starBadge.frame = CGRect(x: pillX + Self.pillWidth - 8, y: -2, width: 12, height: 12)
+        starBadge.image = Self.starImage
+        starBadge.isHidden = true
+        addSubview(starBadge)
+
+        layer.shouldRasterize = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(price: String, tier: PriceTier, isFavorite: Bool) {
+        priceLabel.text = price
+        switch tier {
+        case .normal:
+            pillBackground.backgroundColor = .white
+            priceLabel.textColor = UIColor(white: 0.15, alpha: 1)
+            tailLayer.fillColor = UIColor.white.cgColor
+        case .nearCheapest:
+            pillBackground.backgroundColor = UIColor(red: 0.86, green: 0.96, blue: 0.88, alpha: 1)
+            priceLabel.textColor = UIColor(red: 0.10, green: 0.50, blue: 0.20, alpha: 1)
+            tailLayer.fillColor = UIColor(red: 0.86, green: 0.96, blue: 0.88, alpha: 1).cgColor
+        }
+        starBadge.isHidden = !isFavorite
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        layer.zPosition = 0
+    }
+
+    override func setSelected(_ selected: Bool, animated: Bool) {
+        super.setSelected(selected, animated: animated)
+        let t: CGAffineTransform = selected ? .init(scaleX: 1.12, y: 1.12) : .identity
+        if animated {
+            UIView.animate(withDuration: 0.12) { self.transform = t }
+        } else {
+            transform = t
+        }
+    }
+}
+
 // MARK: - Cheapest Station Pin (with pulse animation — only 1 on screen)
 
 class CheapestPinView: MLNAnnotationView {
     private let pulseRing1 = UIView()
     private let pulseRing2 = UIView()
-    private let imageView = UIImageView()
+    private let pillBackground = UIView()
+    private let priceLabel = UILabel()
+    private let tailLayer = CAShapeLayer()
+    private let crownBadge = UIImageView()
     private var isPulsing = false
 
-    private static let frameSize: CGFloat = 70
+    private static let pillWidth: CGFloat = 68
+    private static let pillHeight: CGFloat = 30
+    private static let tailHeight: CGFloat = 7
+    private static let viewWidth: CGFloat = 80
+    private static let viewHeight: CGFloat = 46
     private static let accentGreen = UIColor(red: 0.16, green: 0.67, blue: 0.33, alpha: 1)
 
-    private static let cheapestImage = renderCheapestImage()
+    private static let crownImage: UIImage? = UIImage(systemName: "crown.fill",
+        withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .bold))?
+        .withTintColor(.white, renderingMode: .alwaysOriginal)
 
     override init(reuseIdentifier: String?) {
         super.init(reuseIdentifier: reuseIdentifier)
-        let fs = Self.frameSize
-        frame = CGRect(x: 0, y: 0, width: fs, height: fs)
-        centerOffset = CGVector(dx: 0, dy: -fs / 2)
+        let w = Self.viewWidth
+        let h = Self.viewHeight
+        frame = CGRect(x: 0, y: 0, width: w, height: h)
+        centerOffset = CGVector(dx: 0, dy: -h / 2)
         isOpaque = false
         backgroundColor = .clear
 
-        let ringSize: CGFloat = 56
-        let ringY = (fs - 38) / 2 + (32 - ringSize) / 2
+        let pillX = (w - Self.pillWidth) / 2
+        let pillY: CGFloat = 4
+        let ringSize: CGFloat = Self.pillWidth + 12
         for ring in [pulseRing1, pulseRing2] {
-            ring.frame = CGRect(x: (fs - ringSize) / 2, y: ringY, width: ringSize, height: ringSize)
+            ring.frame = CGRect(
+                x: (w - ringSize) / 2,
+                y: pillY + (Self.pillHeight - ringSize) / 2,
+                width: ringSize,
+                height: ringSize
+            )
             ring.layer.cornerRadius = ringSize / 2
             ring.backgroundColor = Self.accentGreen.withAlphaComponent(0.3)
             ring.isHidden = true
             addSubview(ring)
         }
 
-        let imgSize: CGFloat = 50
-        imageView.frame = CGRect(
-            x: (fs - imgSize) / 2,
-            y: (fs - imgSize) / 2 - 4,
-            width: imgSize,
-            height: imgSize
-        )
-        imageView.contentMode = .scaleAspectFit
-        imageView.image = Self.cheapestImage
-        addSubview(imageView)
+        pillBackground.frame = CGRect(x: pillX, y: pillY, width: Self.pillWidth, height: Self.pillHeight)
+        pillBackground.backgroundColor = Self.accentGreen
+        pillBackground.layer.cornerRadius = Self.pillHeight / 2
+        pillBackground.layer.shadowColor = UIColor.black.cgColor
+        pillBackground.layer.shadowOpacity = 0.28
+        pillBackground.layer.shadowOffset = CGSize(width: 0, height: 2)
+        pillBackground.layer.shadowRadius = 4
+        pillBackground.layer.shadowPath = UIBezierPath(
+            roundedRect: CGRect(origin: .zero, size: pillBackground.bounds.size),
+            cornerRadius: Self.pillHeight / 2
+        ).cgPath
+        addSubview(pillBackground)
+
+        priceLabel.frame = pillBackground.bounds
+        priceLabel.textAlignment = .center
+        priceLabel.font = .systemFont(ofSize: 14, weight: .bold)
+        priceLabel.textColor = .white
+        priceLabel.adjustsFontSizeToFitWidth = true
+        priceLabel.minimumScaleFactor = 0.8
+        pillBackground.addSubview(priceLabel)
+
+        let tailW: CGFloat = 10
+        let tailTop = pillY + Self.pillHeight - 1
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: w / 2 - tailW / 2, y: tailTop))
+        path.addLine(to: CGPoint(x: w / 2, y: tailTop + Self.tailHeight))
+        path.addLine(to: CGPoint(x: w / 2 + tailW / 2, y: tailTop))
+        path.close()
+        tailLayer.path = path.cgPath
+        tailLayer.fillColor = Self.accentGreen.cgColor
+        tailLayer.shadowColor = UIColor.black.cgColor
+        tailLayer.shadowOpacity = 0.22
+        tailLayer.shadowOffset = CGSize(width: 0, height: 2)
+        tailLayer.shadowRadius = 2.5
+        layer.insertSublayer(tailLayer, below: pillBackground.layer)
+
+        crownBadge.frame = CGRect(x: pillX - 6, y: pillY - 4, width: 14, height: 14)
+        crownBadge.image = Self.crownImage
+        crownBadge.backgroundColor = UIColor(red: 0.95, green: 0.78, blue: 0.0, alpha: 1)
+        crownBadge.layer.cornerRadius = 7
+        crownBadge.contentMode = .center
+        crownBadge.layer.shadowColor = UIColor.black.cgColor
+        crownBadge.layer.shadowOpacity = 0.2
+        crownBadge.layer.shadowOffset = CGSize(width: 0, height: 1)
+        crownBadge.layer.shadowRadius = 1.5
+        addSubview(crownBadge)
 
         layer.zPosition = 1000
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    func configure(price: String) {
+        priceLabel.text = price
+    }
 
     func activate() {
         pulseRing1.isHidden = false
@@ -608,54 +812,6 @@ class CheapestPinView: MLNAnnotationView {
             UIView.animate(withDuration: 0.12) { self.transform = t }
         } else {
             transform = t
-        }
-    }
-
-    private static func renderCheapestImage() -> UIImage {
-        let diameter: CGFloat = 34
-        let tailH: CGFloat = 8
-        let pad: CGFloat = 5
-        let imgW = diameter + pad * 2
-        let imgH = diameter + tailH + pad * 2
-
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: imgW, height: imgH))
-        return renderer.image { ctx in
-            let gc = ctx.cgContext
-            let cx = imgW / 2
-            let circleTop = pad
-
-            gc.saveGState()
-            gc.setShadow(
-                offset: CGSize(width: 0, height: 2),
-                blur: 4,
-                color: UIColor.black.withAlphaComponent(0.25).cgColor
-            )
-
-            gc.setFillColor(accentGreen.cgColor)
-            gc.fillEllipse(in: CGRect(x: cx - diameter / 2, y: circleTop, width: diameter, height: diameter))
-
-            let tailTop = circleTop + diameter - 2
-            let tailW: CGFloat = 8
-            gc.move(to: CGPoint(x: cx - tailW / 2, y: tailTop))
-            gc.addLine(to: CGPoint(x: cx, y: tailTop + tailH))
-            gc.addLine(to: CGPoint(x: cx + tailW / 2, y: tailTop))
-            gc.closePath()
-            gc.fillPath()
-
-            gc.restoreGState()
-
-            let iconSize: CGFloat = 17
-            let iconRect = CGRect(
-                x: cx - iconSize / 2,
-                y: circleTop + (diameter - iconSize) / 2,
-                width: iconSize,
-                height: iconSize
-            )
-            let config = UIImage.SymbolConfiguration(pointSize: iconSize, weight: .bold)
-            if let icon = UIImage(systemName: "fuelpump.fill", withConfiguration: config)?
-                .withTintColor(.white, renderingMode: .alwaysOriginal) {
-                icon.draw(in: iconRect)
-            }
         }
     }
 }

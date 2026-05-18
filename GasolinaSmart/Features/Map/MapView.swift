@@ -25,6 +25,7 @@ struct MapView: View {
     @State private var showNavigationPicker = false
     @State private var initialLoadComplete = false
     @State private var selectedChargingStation: ChargingStation?
+    @State private var showStationList = false
 
     var body: some View {
         ZStack {
@@ -43,7 +44,9 @@ struct MapView: View {
                 centerOnUserCounter: centerOnUserCounter,
                 zoomRadiusKm: preferences.preferredRadiusKm,
                 zoomRadiusCounter: zoomRadiusCounter,
-                isDarkMode: preferences.appearance == .dark
+                isDarkMode: preferences.appearance == .dark,
+                selectedFuelType: preferences.selectedFuelType,
+                cheapestPrice: cachedCheapest?.price(for: preferences.selectedFuelType)
             )
             .ignoresSafeArea()
             .opacity(initialLoadComplete ? 1 : 0)
@@ -79,6 +82,18 @@ struct MapView: View {
 
                 bottomContent
             }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    mapActionButtons
+                        .padding(.trailing, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.sm)
+                }
+                Spacer()
+            }
+            .padding(.top, 58)
+            .allowsHitTesting(true)
 
             if !locationManager.isAuthorized && !store.isLoading && store.allStations.isEmpty {
                 noLocationOverlay
@@ -217,6 +232,25 @@ struct MapView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showStationList) {
+            StationListSheet(
+                stations: visibleStations,
+                userLocation: locationManager.location,
+                fuelType: preferences.selectedFuelType,
+                country: preferences.selectedCountry,
+                cheapestPrice: cachedCheapest?.price(for: preferences.selectedFuelType),
+                averagePrice: cachedAveragePrice,
+                radiusKm: preferences.preferredRadiusKm,
+                favoriteIds: preferences.favoriteStationIds,
+                onStationTapped: { station in
+                    showStationList = false
+                    appState.selectedStation = station
+                    appState.showStationDetail = true
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showVehicleMenu) {
             VehicleSwitcherSheet(
                 onSelectVehicle: { vehicle in
@@ -299,6 +333,12 @@ struct MapView: View {
             .buttonStyle(.plain)
             .frame(width: 126, alignment: .leading)
 
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+    }
+
+    private var mapActionButtons: some View {
+        VStack(spacing: 10) {
             Button {
                 centerOnUserCounter += 1
                 locationManager.requestLocation()
@@ -313,8 +353,21 @@ struct MapView: View {
                     .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
             }
             .buttonStyle(.plain)
+
+            Button {
+                showStationList = true
+            } label: {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.accent)
+                    .frame(width: 44, height: 44)
+                    .background(topBarCircleBackground)
+                    .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 1))
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, Theme.Spacing.md)
     }
 
     private var topBarCapsuleBackground: some ShapeStyle {
@@ -740,5 +793,257 @@ struct RadiusPickerSheet: View {
         .onAppear {
             sliderValue = preferences.preferredRadiusKm
         }
+    }
+}
+
+// MARK: - Station List Sheet
+
+private struct StationListSheet: View {
+    @Environment(UserPreferences.self) private var preferences
+    @Environment(\.dismiss) private var dismiss
+
+    let stations: [FuelStation]
+    let userLocation: CLLocation?
+    let fuelType: FuelType
+    let country: Country
+    let cheapestPrice: Decimal?
+    let averagePrice: Decimal?
+    let radiusKm: Double
+    let favoriteIds: Set<String>
+    let onStationTapped: (FuelStation) -> Void
+
+    @State private var selectedTab: SortTab = .recommended
+
+    private var loc: Loc { preferences.loc }
+
+    enum SortTab: String, CaseIterable, Hashable {
+        case recommended
+        case price
+        case distance
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Text(loc.listResultsInRadius(sortedStations.count, Int(radiusKm)))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
+
+                Picker("", selection: $selectedTab) {
+                    Text(loc.listRecommended).tag(SortTab.recommended)
+                    Text(loc.listPrice).tag(SortTab.price)
+                    Text(loc.listDistance).tag(SortTab.distance)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+
+                if sortedStations.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "fuelpump.slash")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                        Text(loc.mapNoStations(Int(radiusKm)))
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(sortedStations) { station in
+                                Button {
+                                    onStationTapped(station)
+                                } label: {
+                                    StationListRow(
+                                        station: station,
+                                        rank: rank(of: station),
+                                        distance: distance(for: station),
+                                        price: station.price(for: fuelType),
+                                        priceQuality: priceQuality(for: station),
+                                        isFavorite: favoriteIds.contains(station.id),
+                                        country: country,
+                                        fuelType: fuelType
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 24)
+                    }
+                }
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle(loc.listTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(loc.close) { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var sortedStations: [FuelStation] {
+        let withPrice = stations.filter { $0.price(for: fuelType) != nil }
+        switch selectedTab {
+        case .price:
+            return withPrice.sorted { a, b in
+                let pa = a.price(for: fuelType) ?? .greatestFiniteMagnitude
+                let pb = b.price(for: fuelType) ?? .greatestFiniteMagnitude
+                return pa < pb
+            }
+        case .distance:
+            guard let location = userLocation else { return withPrice }
+            return withPrice.sorted { a, b in
+                a.distance(from: location) < b.distance(from: location)
+            }
+        case .recommended:
+            guard let location = userLocation else {
+                return withPrice.sorted { a, b in
+                    let pa = a.price(for: fuelType) ?? .greatestFiniteMagnitude
+                    let pb = b.price(for: fuelType) ?? .greatestFiniteMagnitude
+                    return pa < pb
+                }
+            }
+            return withPrice.sorted { a, b in
+                totalCost(for: a, location: location) < totalCost(for: b, location: location)
+            }
+        }
+    }
+
+    private func totalCost(for station: FuelStation, location: CLLocation) -> Double {
+        guard let price = station.price(for: fuelType), price > 0 else { return .greatestFiniteMagnitude }
+        let priceDouble = NSDecimalNumber(decimal: price).doubleValue
+        let tankLiters = preferences.tankSizeLiters
+        let consumption = preferences.consumptionL100Km
+        let distanceKm = station.distanceKm(from: location)
+        let fillCost = priceDouble * tankLiters
+        let detourCost = distanceKm * 2 * (consumption / 100) * priceDouble
+        return fillCost + detourCost
+    }
+
+    private func rank(of station: FuelStation) -> Int {
+        sortedStations.firstIndex(where: { $0.id == station.id }).map { $0 + 1 } ?? 0
+    }
+
+    private func distance(for station: FuelStation) -> Double? {
+        guard let location = userLocation else { return nil }
+        return station.distanceKm(from: location)
+    }
+
+    private func priceQuality(for station: FuelStation) -> PriceQuality {
+        guard let price = station.price(for: fuelType) else { return .unknown }
+        if let cheapest = cheapestPrice {
+            let ratio = NSDecimalNumber(decimal: price / cheapest).doubleValue
+            if ratio <= 1.02 { return .good }
+        }
+        if let average = averagePrice {
+            let ratio = NSDecimalNumber(decimal: price / average).doubleValue
+            if ratio >= 1.03 { return .bad }
+        }
+        return .normal
+    }
+}
+
+private enum PriceQuality {
+    case good
+    case normal
+    case bad
+    case unknown
+
+    var color: Color {
+        switch self {
+        case .good: Color(red: 0.10, green: 0.55, blue: 0.20)
+        case .normal: Color(.label)
+        case .bad: Color(red: 0.85, green: 0.40, blue: 0.10)
+        case .unknown: Color(.secondaryLabel)
+        }
+    }
+
+    var backgroundColor: Color {
+        switch self {
+        case .good: Color(red: 0.86, green: 0.96, blue: 0.88)
+        case .normal: Color(.tertiarySystemFill)
+        case .bad: Color(red: 0.99, green: 0.92, blue: 0.85)
+        case .unknown: Color(.tertiarySystemFill)
+        }
+    }
+}
+
+private struct StationListRow: View {
+    let station: FuelStation
+    let rank: Int
+    let distance: Double?
+    let price: Decimal?
+    let priceQuality: PriceQuality
+    let isFavorite: Bool
+    let country: Country
+    let fuelType: FuelType
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(rank == 1 ? Theme.Colors.accent : Color(.tertiarySystemFill))
+                    .frame(width: 28, height: 28)
+                Text("\(rank)")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(rank == 1 ? .white : Color(.label))
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(station.brand.isEmpty ? station.name : station.brand)
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(Color(.label))
+                    if isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(red: 0.95, green: 0.78, blue: 0.0))
+                    }
+                }
+                HStack(spacing: 6) {
+                    if let distance {
+                        Text(distance.distanceFormatted)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+                    if !station.address.isEmpty {
+                        Text("·")
+                            .foregroundStyle(Color(.tertiaryLabel))
+                        Text(station.address)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(price?.priceFormatted ?? "—")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(priceQuality.color)
+                Text(fuelType.unit(for: country))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(priceQuality.backgroundColor)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

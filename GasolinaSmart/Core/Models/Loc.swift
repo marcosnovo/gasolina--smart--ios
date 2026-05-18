@@ -70,6 +70,14 @@ struct Loc {
         s("Sin gasolineras en \(km) km", "No stations within \(km) km", "Aucune station dans \(km) km", "Keine Tankstellen im Umkreis von \(km) km", "Sem postos em \(km) km")
     }
 
+    var listTitle: String { s("Gasolineras", "Stations", "Stations", "Tankstellen", "Postos") }
+    var listRecommended: String { s("Recomendado", "Recommended", "Recommandé", "Empfohlen", "Recomendado") }
+    var listPrice: String { s("Precio", "Price", "Prix", "Preis", "Preço") }
+    var listDistance: String { s("Distancia", "Distance", "Distance", "Entfernung", "Distância") }
+    func listResultsInRadius(_ count: Int, _ km: Int) -> String {
+        s("\(count) en \(km) km", "\(count) within \(km) km", "\(count) dans \(km) km", "\(count) im Umkreis von \(km) km", "\(count) em \(km) km")
+    }
+
     // MARK: - Search
 
     var searchingLocation: String { s("Buscando ubicación...", "Searching location...", "Recherche en cours...", "Standort wird gesucht...", "A pesquisar localização...") }
