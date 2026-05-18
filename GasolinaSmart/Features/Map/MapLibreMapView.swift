@@ -81,6 +81,7 @@ struct MapLibreMapView: UIViewRepresentable {
             coordinator.lastCenterCounter = centerOnUserCounter
             if let coord = mapView.userLocation?.coordinate,
                CLLocationCoordinate2DIsValid(coord) {
+                coordinator.pendingProgrammaticChange = true
                 mapView.setCenter(coord, zoomLevel: 13, animated: true)
             }
         }
@@ -102,6 +103,7 @@ struct MapLibreMapView: UIViewRepresentable {
                         longitude: coord.longitude + lonDelta / 2
                     )
                 )
+                coordinator.pendingProgrammaticChange = true
                 mapView.setVisibleCoordinateBounds(bounds, animated: true)
             }
         }
@@ -110,6 +112,7 @@ struct MapLibreMapView: UIViewRepresentable {
            let cheapestAnn = coordinator.annotationMap[cheapestId],
            let userCoord = mapView.userLocation?.coordinate,
            CLLocationCoordinate2DIsValid(userCoord) {
+            coordinator.pendingProgrammaticChange = true
             coordinator.fitBounds(on: mapView, coordinates: [userCoord, cheapestAnn.coordinate])
         }
     }
@@ -128,6 +131,7 @@ struct MapLibreMapView: UIViewRepresentable {
         var annotationMap: [String: StationPointAnnotation] = [:]
         var chargingAnnotationMap: [String: ChargingPointAnnotation] = [:]
         var needsFullReconfigure = false
+        var pendingProgrammaticChange = false
         private var hasFittedInitialBounds = false
         private var currentCheapestViewId: String?
 
@@ -370,20 +374,19 @@ struct MapLibreMapView: UIViewRepresentable {
             }
         }
 
-        func mapView(
-            _ mapView: MLNMapView,
-            regionDidChangeWith reason: MLNCameraChangeReason,
-            animated: Bool
-        ) {
-            // Only notify on user-initiated movements; ignore programmatic camera updates
-            // (initial fit, centerOnUser, zoomToRadius) which would otherwise trick the UI
-            // into thinking the user is "exploring".
-            let userGestures: MLNCameraChangeReason = [
-                .gesturePan, .gesturePinch, .gestureRotate,
-                .gestureZoomIn, .gestureZoomOut, .gestureOneFingerZoom, .gestureTilt,
-            ]
-            guard !reason.intersection(userGestures).isEmpty,
-                  hasFittedInitialBounds else { return }
+        func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
+            // Skip everything until the first camera fit has happened — those
+            // initial moves are programmatic and not "the user exploring".
+            guard hasFittedInitialBounds else { return }
+
+            // Programmatic updates (centerOnUser, zoomToRadius, cheapest-fit)
+            // set this flag right before calling the map view; consume it here
+            // so we don't show the 'Search this area' button after our own
+            // moves.
+            if pendingProgrammaticChange {
+                pendingProgrammaticChange = false
+                return
+            }
 
             let bounds = mapView.visibleCoordinateBounds
             parent.onUserMovedMap?(
