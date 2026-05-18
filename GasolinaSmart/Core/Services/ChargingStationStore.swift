@@ -112,6 +112,54 @@ final class ChargingStationStore {
         let averagePricePerKWh: Decimal?
     }
 
+    /// Bounds-based filter for the EV "Search in this area" feature. Mirrors
+    /// StationStore.areaSummary but for charging points: returns the
+    /// stations inside the visible map rectangle, capped at `limit` and
+    /// sorted by parsed €/kWh ascending (or max kW descending as a fallback
+    /// when no prices are available).
+    func areaSummary(
+        minLatitude: Double,
+        maxLatitude: Double,
+        minLongitude: Double,
+        maxLongitude: Double,
+        limit: Int = 30
+    ) -> ChargingSummary {
+        var matches = stations.filter { s in
+            s.isOperational
+                && s.latitude >= minLatitude && s.latitude <= maxLatitude
+                && s.longitude >= minLongitude && s.longitude <= maxLongitude
+        }
+
+        if matches.count > limit {
+            // Sort by price first, falling back to max kW.
+            matches.sort { a, b in
+                switch (a.pricePerKWh, b.pricePerKWh) {
+                case (let pa?, let pb?): return pa < pb
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return (a.maxPowerKW ?? 0) > (b.maxPowerKW ?? 0)
+                }
+            }
+            matches = Array(matches.prefix(limit))
+        }
+
+        let priced = matches.compactMap { s -> (ChargingStation, Decimal)? in
+            guard let p = s.pricePerKWh else { return nil }
+            return (s, p)
+        }
+        let cheapest = priced.min(by: { $0.1 < $1.1 })?.0
+            ?? matches.max(by: { ($0.maxPowerKW ?? 0) < ($1.maxPowerKW ?? 0) })
+        let avg: Decimal? = priced.isEmpty
+            ? nil
+            : priced.map(\.1).reduce(Decimal.zero, +) / Decimal(priced.count)
+
+        return ChargingSummary(
+            visibleStations: matches,
+            cheapestStation: cheapest,
+            averagePricePerKWh: avg
+        )
+    }
+
     /// EV equivalent of StationStore.nearbySummary. The "cheapest" is the
     /// station with the lowest parsed €/kWh among nearby stations; if no
     /// nearby station advertises a price, falls back to the fastest charger.

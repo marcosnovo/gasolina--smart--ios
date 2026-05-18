@@ -478,20 +478,36 @@ struct MapView: View {
     private func applyAreaSearch(_ area: VisibleMapArea) {
         // The store holds the full country, so this is an in-memory filter.
         // No network call, no spinner — feels instant.
-        let summary = store.areaSummary(
-            minLatitude: area.minLatitude,
-            maxLatitude: area.maxLatitude,
-            minLongitude: area.minLongitude,
-            maxLongitude: area.maxLongitude,
-            fuelTypes: Set(preferences.vehicleSupportedFuels),
-            primaryFuel: preferences.selectedFuelType,
-            limit: 30
-        )
-        visibleStations = summary.visibleStations
-        cachedCheapest = summary.cheapestStation
-        cachedAveragePrice = summary.averagePrice
-        cheapestPriceByFuel = summary.cheapestPriceByFuel
-        displayedFuelByStation = summary.displayedFuelByStation
+        if preferences.selectedVehicle.isElectric {
+            let summary = chargingStore.areaSummary(
+                minLatitude: area.minLatitude,
+                maxLatitude: area.maxLatitude,
+                minLongitude: area.minLongitude,
+                maxLongitude: area.maxLongitude,
+                limit: 30
+            )
+            visibleStations = []
+            cachedCheapest = nil
+            cachedAveragePrice = nil
+            cheapestPriceByFuel = [:]
+            displayedFuelByStation = [:]
+            visibleChargingStations = summary.visibleStations
+        } else {
+            let summary = store.areaSummary(
+                minLatitude: area.minLatitude,
+                maxLatitude: area.maxLatitude,
+                minLongitude: area.minLongitude,
+                maxLongitude: area.maxLongitude,
+                fuelTypes: Set(preferences.vehicleSupportedFuels),
+                primaryFuel: preferences.selectedFuelType,
+                limit: 30
+            )
+            visibleStations = summary.visibleStations
+            cachedCheapest = summary.cheapestStation
+            cachedAveragePrice = summary.averagePrice
+            cheapestPriceByFuel = summary.cheapestPriceByFuel
+            displayedFuelByStation = summary.displayedFuelByStation
+        }
         isAreaMode = true
         withAnimation(.easeInOut(duration: 0.2)) {
             pendingArea = nil
@@ -773,6 +789,10 @@ struct MapView: View {
     }
 
     private func updateChargingStations() {
+        // When the user is exploring via "Search this area" on an EV, their
+        // chosen rectangle is authoritative — don't snap back to the radius.
+        if isAreaMode, preferences.selectedVehicle.isElectric { return }
+
         guard preferences.effectiveShowChargingStations, let location = locationManager.location else {
             visibleChargingStations = []
             return
