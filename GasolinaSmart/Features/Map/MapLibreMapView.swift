@@ -151,6 +151,16 @@ struct MapLibreMapView: UIViewRepresentable {
         private var hasFittedInitialBounds = false
         private var currentCheapestViewId: String?
 
+        // Snapshots of the visual inputs we hand to existing annotations.
+        // When all of these match the new render, we can skip the per-station
+        // reconfigure loop entirely — the annotations on screen already
+        // reflect the correct state. Most renders only mutate user location
+        // or charging state, so the fuel pins rarely actually need a refresh.
+        private var lastCheapestId: String?
+        private var lastFavoriteIds: Set<String> = []
+        private var lastCheapestPriceByFuel: [FuelType: Decimal] = [:]
+        private var lastDisplayedFuelByStation: [String: FuelType] = [:]
+
         init(parent: MapLibreMapView) {
             self.parent = parent
         }
@@ -187,31 +197,48 @@ struct MapLibreMapView: UIViewRepresentable {
                 mapView.addAnnotations(annsToAdd)
             }
 
-            for station in parent.stations {
-                guard let existing = annotationMap[station.id] else { continue }
-                let isCheapest = station.id == parent.cheapestId
-                let isFavorite = parent.favoriteIds.contains(station.id)
-                let newPriceText = priceText(for: station)
-                let newTier = priceTier(for: station)
-                existing.station = station
-                if existing.coordinate.latitude != station.latitude || existing.coordinate.longitude != station.longitude {
-                    existing.coordinate = station.coordinate
-                }
-                let changed = existing.isCheapest != isCheapest
-                    || existing.isFavorite != isFavorite
-                    || existing.priceText != newPriceText
-                    || existing.tier != newTier
-                existing.isCheapest = isCheapest
-                existing.isFavorite = isFavorite
-                existing.priceText = newPriceText
-                existing.tier = newTier
-                if changed || needsFullReconfigure {
-                    if isCheapest, let view = mapView.view(for: existing) as? CheapestPinView {
-                        view.configure(price: newPriceText ?? "—")
-                    } else if let view = mapView.view(for: existing) as? PricePinView {
-                        view.configure(price: newPriceText ?? "—", tier: newTier, isFavorite: isFavorite)
+            // Anything that can change a pin's appearance: cheapest crown
+            // moved, favourites edited, per-fuel cheapest prices recomputed
+            // (affects the near-cheapest green tint), or a station's
+            // displayed fuel was reassigned. If none changed since the last
+            // sync we can skip the per-station reconfigure loop entirely.
+            let visualsChanged = needsFullReconfigure
+                || parent.cheapestId != lastCheapestId
+                || parent.favoriteIds != lastFavoriteIds
+                || parent.cheapestPriceByFuel != lastCheapestPriceByFuel
+                || parent.displayedFuelByStation != lastDisplayedFuelByStation
+
+            if visualsChanged {
+                for station in parent.stations {
+                    guard let existing = annotationMap[station.id] else { continue }
+                    let isCheapest = station.id == parent.cheapestId
+                    let isFavorite = parent.favoriteIds.contains(station.id)
+                    let newPriceText = priceText(for: station)
+                    let newTier = priceTier(for: station)
+                    existing.station = station
+                    if existing.coordinate.latitude != station.latitude || existing.coordinate.longitude != station.longitude {
+                        existing.coordinate = station.coordinate
+                    }
+                    let changed = existing.isCheapest != isCheapest
+                        || existing.isFavorite != isFavorite
+                        || existing.priceText != newPriceText
+                        || existing.tier != newTier
+                    existing.isCheapest = isCheapest
+                    existing.isFavorite = isFavorite
+                    existing.priceText = newPriceText
+                    existing.tier = newTier
+                    if changed || needsFullReconfigure {
+                        if isCheapest, let view = mapView.view(for: existing) as? CheapestPinView {
+                            view.configure(price: newPriceText ?? "—")
+                        } else if let view = mapView.view(for: existing) as? PricePinView {
+                            view.configure(price: newPriceText ?? "—", tier: newTier, isFavorite: isFavorite)
+                        }
                     }
                 }
+                lastCheapestId = parent.cheapestId
+                lastFavoriteIds = parent.favoriteIds
+                lastCheapestPriceByFuel = parent.cheapestPriceByFuel
+                lastDisplayedFuelByStation = parent.displayedFuelByStation
             }
 
             let newCheapestId = parent.cheapestId

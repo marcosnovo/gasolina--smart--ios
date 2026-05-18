@@ -686,6 +686,21 @@ struct MapView: View {
     /// car) wouldn't trigger selectedFuelType.didChange.
     private func handleVehicleSwitch() {
         exitAreaMode()
+
+        // When the new vehicle is an EV, force-clear all fuel-station state
+        // up-front. `updateVisibleStations()` already returns an empty
+        // summary for EVs (vehicleSupportedFuels is []), but doing it
+        // explicitly here closes a rendering gap where the previous
+        // vehicle's pills could linger on the map when pendingArea was set
+        // and the next state mutation hadn't pushed yet.
+        if preferences.selectedVehicle.isElectric {
+            visibleStations = []
+            cachedCheapest = nil
+            cachedAveragePrice = nil
+            cheapestPriceByFuel = [:]
+            displayedFuelByStation = [:]
+        }
+
         updateVisibleStations()
         if preferences.effectiveShowChargingStations {
             // Make sure the snapshot for this country is loaded; the store
@@ -965,9 +980,13 @@ private struct VehicleSwitcherSheet: View {
     private var loc: Loc { preferences.loc }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Header: vehicle name + fuel as the primary title, with the
+                // Close button aligned to the trailing edge on the same row.
+                // Replaces the NavigationStack title bar so the name doesn't
+                // appear twice in the sheet.
+                ZStack {
                     VStack(spacing: 4) {
                         Text(preferences.selectedVehicle.name)
                             .font(.title2.weight(.bold))
@@ -975,66 +994,66 @@ private struct VehicleSwitcherSheet: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.top, 8)
 
-                    VStack(spacing: 10) {
-                        ForEach(preferences.vehicles) { vehicle in
-                            Button {
-                                onSelectVehicle(vehicle)
-                                dismiss()
-                            } label: {
-                                HStack(spacing: 12) {
-                                    VehicleAvatar(vehicle: vehicle, size: 40)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(vehicle.name)
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundStyle(Color(.label))
-                                        Text(vehicle.fuelType.displayName(for: preferences.selectedCountry))
-                                            .font(.system(size: 13, weight: .medium))
-                                            .foregroundStyle(Color(.secondaryLabel))
-                                    }
-                                    Spacer()
-                                    if preferences.selectedVehicleId == vehicle.id {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundStyle(Theme.Colors.accent)
-                                    }
+                    HStack {
+                        Spacer()
+                        Button(loc.close) { dismiss() }
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.Colors.accent)
+                    }
+                }
+                .padding(.top, 4)
+
+                VStack(spacing: 10) {
+                    ForEach(preferences.vehicles) { vehicle in
+                        Button {
+                            onSelectVehicle(vehicle)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                VehicleAvatar(vehicle: vehicle, size: 40)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(vehicle.name)
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(Color(.label))
+                                    Text(vehicle.fuelType.displayName(for: preferences.selectedCountry))
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(Color(.secondaryLabel))
                                 }
-                                .padding(14)
-                                .background(Color(.secondarySystemGroupedBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                Spacer()
+                                if preferences.selectedVehicleId == vehicle.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(Theme.Colors.accent)
+                                }
                             }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    VStack(spacing: 10) {
-                        Button {
-                            onEditVehicle()
-                            dismiss()
-                        } label: {
-                            actionRow(icon: "pencil", title: loc.edit)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            onAddVehicle()
-                            dismiss()
-                        } label: {
-                            actionRow(icon: "plus.circle", title: loc.settingsAddVehicle)
+                            .padding(14)
+                            .background(Color(.secondarySystemGroupedBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(16)
-            }
-            .navigationTitle(preferences.selectedVehicle.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(loc.close) { dismiss() }
+
+                VStack(spacing: 10) {
+                    Button {
+                        onEditVehicle()
+                        dismiss()
+                    } label: {
+                        actionRow(icon: "pencil", title: loc.edit)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        onAddVehicle()
+                        dismiss()
+                    } label: {
+                        actionRow(icon: "plus.circle", title: loc.settingsAddVehicle)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
+            .padding(16)
         }
     }
 
