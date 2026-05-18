@@ -14,7 +14,7 @@ enabled = true
 [[d1_databases]]
 binding = "DB"
 database_name = "gasolina-smart-db"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "f575dc0b-52bd-48a0-9c69-a0a27e0e7585"
 
 # --- R2 bucket (snapshots of station data per country) ---
 # Create with: wrangler r2 bucket create gasolina-smart-snapshots
