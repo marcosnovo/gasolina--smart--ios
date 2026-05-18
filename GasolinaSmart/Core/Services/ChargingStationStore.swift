@@ -156,19 +156,33 @@ final class ChargingStationStore {
             matches = Array(matches.prefix(limit))
         }
 
-        let priced = matches.compactMap { s -> (ChargingStation, Decimal)? in
-            guard let p = s.pricePerKWh else { return nil }
-            return (s, p)
-        }
-        let cheapest = priced.min(by: { $0.1 < $1.1 })?.0
-            ?? matches.max(by: { ($0.maxPowerKW ?? 0) < ($1.maxPowerKW ?? 0) })
-        let avg: Decimal? = priced.isEmpty
-            ? nil
-            : priced.map(\.1).reduce(Decimal.zero, +) / Decimal(priced.count)
+        var cheapest: ChargingStation?
+        var cheapestPrice: Decimal?
+        var fastest: ChargingStation?
+        var fastestKW: Double = -1
+        var priceSum: Decimal = 0
+        var pricedCount: Int = 0
 
+        for station in matches {
+            if let price = station.pricePerKWh {
+                priceSum += price
+                pricedCount += 1
+                if cheapestPrice == nil || price < cheapestPrice! {
+                    cheapestPrice = price
+                    cheapest = station
+                }
+            }
+            let power = station.maxPowerKW ?? 0
+            if power > fastestKW {
+                fastestKW = power
+                fastest = station
+            }
+        }
+
+        let avg: Decimal? = pricedCount == 0 ? nil : priceSum / Decimal(pricedCount)
         return ChargingSummary(
             visibleStations: matches,
-            cheapestStation: cheapest,
+            cheapestStation: cheapest ?? fastest,
             averagePricePerKWh: avg
         )
     }
@@ -185,33 +199,53 @@ final class ChargingStationStore {
         let radiusM = radiusKm * 1000
         let origin = location.coordinate
 
-        let nearby = stations
-            .compactMap { s -> (station: ChargingStation, distance: Double)? in
-                guard s.isOperational else { return nil }
-                guard s.matchesConnectorFilter(connectorFilter) else { return nil }
-                let d = s.distanceKm(from: origin) * 1000
-                guard d <= radiusM else { return nil }
-                return (s, d)
-            }
-            .sorted { $0.distance < $1.distance }
-            .prefix(limit)
+        // Single pass that filters + computes distance, avoiding the
+        // closure-wrapped compactMap allocation. Builds the array, then
+        // sorts and prefixes — same complexity as before, fewer
+        // intermediate allocations.
+        var candidates: [(station: ChargingStation, distance: Double)] = []
+        candidates.reserveCapacity(stations.count)
+        for s in stations {
+            guard s.isOperational else { continue }
+            guard s.matchesConnectorFilter(connectorFilter) else { continue }
+            let d = s.distanceKm(from: origin) * 1000
+            guard d <= radiusM else { continue }
+            candidates.append((s, d))
+        }
+        candidates.sort { $0.distance < $1.distance }
+        let nearby = candidates.prefix(limit)
 
-        let visible = nearby.map(\.station)
-        let priced = visible.compactMap { s -> (ChargingStation, Decimal)? in
-            guard let price = s.pricePerKWh else { return nil }
-            return (s, price)
+        var visible: [ChargingStation] = []
+        visible.reserveCapacity(nearby.count)
+        var cheapest: ChargingStation?
+        var cheapestPrice: Decimal?
+        var fastest: ChargingStation?
+        var fastestKW: Double = -1
+        var priceSum: Decimal = 0
+        var pricedCount: Int = 0
+
+        for entry in nearby {
+            let s = entry.station
+            visible.append(s)
+            if let price = s.pricePerKWh {
+                priceSum += price
+                pricedCount += 1
+                if cheapestPrice == nil || price < cheapestPrice! {
+                    cheapestPrice = price
+                    cheapest = s
+                }
+            }
+            let power = s.maxPowerKW ?? 0
+            if power > fastestKW {
+                fastestKW = power
+                fastest = s
+            }
         }
 
-        let cheapest = priced.min(by: { $0.1 < $1.1 })?.0
-            ?? visible.max(by: { ($0.maxPowerKW ?? 0) < ($1.maxPowerKW ?? 0) })
-
-        let avg: Decimal? = priced.isEmpty
-            ? nil
-            : priced.map(\.1).reduce(Decimal.zero, +) / Decimal(priced.count)
-
+        let avg: Decimal? = pricedCount == 0 ? nil : priceSum / Decimal(pricedCount)
         return ChargingSummary(
             visibleStations: visible,
-            cheapestStation: cheapest,
+            cheapestStation: cheapest ?? fastest,
             averagePricePerKWh: avg
         )
     }

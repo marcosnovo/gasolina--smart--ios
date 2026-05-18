@@ -5,6 +5,16 @@ struct ChargingConnection: Equatable, Sendable {
     let typeName: String
     let powerKW: Double?
     let quantity: Int?
+    /// Canonical short name ("CCS", "Type 2", …) computed once at init so
+    /// hot-path filters and badges don't redo `.lowercased()` per access.
+    let shortName: String
+
+    nonisolated init(typeName: String, powerKW: Double?, quantity: Int?) {
+        self.typeName = typeName
+        self.powerKW = powerKW
+        self.quantity = quantity
+        self.shortName = ChargingStation.normalizeConnectorShortName(typeName)
+    }
 }
 
 struct ChargingStation: Identifiable, Equatable, Sendable {
@@ -21,6 +31,57 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
     let isOperational: Bool
     let usageCost: String?
     let lastUpdated: Date?
+
+    // Derived fields cached at init. We have tens of thousands of stations
+    // in memory and these are read from filters, sorts and pin views on
+    // every map update — recomputing the regex, lowercasing and connector
+    // scans per access showed up as a measurable cost in the previous
+    // perf audit.
+    let pricePerKWh: Decimal?
+    let isFree: Bool
+    let maxPowerKW: Double?
+    let speedCategory: SpeedCategory
+    let connectorShortNames: Set<String>
+
+    nonisolated init(
+        id: String,
+        name: String,
+        operatorName: String,
+        address: String,
+        town: String,
+        province: String,
+        latitude: Double,
+        longitude: Double,
+        connections: [ChargingConnection],
+        numberOfPoints: Int,
+        isOperational: Bool,
+        usageCost: String?,
+        lastUpdated: Date?
+    ) {
+        self.id = id
+        self.name = name
+        self.operatorName = operatorName
+        self.address = address
+        self.town = town
+        self.province = province
+        self.latitude = latitude
+        self.longitude = longitude
+        self.connections = connections
+        self.numberOfPoints = numberOfPoints
+        self.isOperational = isOperational
+        self.usageCost = usageCost
+        self.lastUpdated = lastUpdated
+
+        self.pricePerKWh = Self.parsePricePerKWh(from: usageCost)
+        self.isFree = Self.parseIsFree(from: usageCost)
+        let maxPower = connections.compactMap(\.powerKW).max()
+        self.maxPowerKW = maxPower
+        self.speedCategory = Self.computeSpeedCategory(maxPower: maxPower, connections: connections)
+        var names = Set<String>()
+        names.reserveCapacity(connections.count)
+        for c in connections { names.insert(c.shortName) }
+        self.connectorShortNames = names
+    }
 
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -44,58 +105,9 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
         ) / 1000.0
     }
 
-    var maxPowerKW: Double? {
-        connections.compactMap(\.powerKW).max()
-    }
-
-    var speedCategory: SpeedCategory {
-        if let maxPower = maxPowerKW {
-            // 22 kW is the practical "useful for a quick top-up" floor. Most
-            // urban public chargers in Spain sit at 22 kW AC; 50 kW+ are
-            // DC fast. We collapse both into .fast so the green pill /
-            // bolt badge actually fires for the chargers a driver cares
-            // about, instead of only DC fast which is rare in mixed-use
-            // areas. Anything below 22 kW remains slow/semi.
-            if maxPower >= 22 { return .fast }
-            if maxPower >= 11 { return .semiFast }
-            return .slow
-        }
-        // When OpenChargeMap doesn't report kW, infer from the connector type:
-        // CCS / CHAdeMO / NACS are always DC fast plugs.
-        for conn in connections {
-            let short = ChargingStation.normalizeConnectorShortName(conn.typeName)
-            if short == "CCS" || short == "CHAdeMO" || short == "NACS" {
-                return .fast
-            }
-        }
-        return .unknown
-    }
-
     var connectionSummary: String {
         let types = Set(connections.map(\.typeName)).sorted()
         return types.joined(separator: ", ")
-    }
-
-    /// Parsed price per kWh extracted from the free-text `usageCost` (e.g.
-    /// "0.35€/kWh", "0,30 €/kWh + 0,05€/min"). Returns nil if the string
-    /// doesn't contain a recognisable per-kWh price.
-    var pricePerKWh: Decimal? {
-        guard let cost = usageCost else { return nil }
-        return ChargingStation.parseCostPerKWh(cost)
-    }
-
-    /// Treats "Gratuito" / "Free" / "Libre" usage costs as a real "0 €/kWh"
-    /// signal so the UI can show a green Free badge.
-    var isFree: Bool {
-        guard let cost = usageCost?.lowercased() else { return false }
-        return cost.contains("gratu") || cost.contains("free") || cost.contains("libre") || cost == "0"
-    }
-
-    /// Set of normalised connector shortNames the station carries
-    /// ("CCS", "Type 2", "CHAdeMO", …). Empty when the data source didn't
-    /// report any connectors.
-    var connectorShortNames: Set<String> {
-        Set(connections.map { ChargingStation.normalizeConnectorShortName($0.typeName) })
     }
 
     /// True when the station has any connector compatible with `filter`.
@@ -103,16 +115,13 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
     /// we'd rather show a possibly-compatible station than hide it because
     /// OpenChargeMap didn't have the data.
     ///
-    /// Hot path: called once per station per filter pass (thousands of
-    /// stations × multiple filter calls per map update). Avoids allocating
-    /// a Set per call — short-circuits on the first matching connector.
+    /// Uses the pre-normalised `connectorShortNames` set so the hot path
+    /// is a single set intersection check, no per-call lowercasing.
     func matchesConnectorFilter(_ filter: Set<String>) -> Bool {
         if filter.isEmpty { return true }
         if connections.isEmpty { return true }
-        for conn in connections {
-            if filter.contains(ChargingStation.normalizeConnectorShortName(conn.typeName)) {
-                return true
-            }
+        for name in connectorShortNames {
+            if filter.contains(name) { return true }
         }
         return false
     }
@@ -133,18 +142,24 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
         return raw
     }
 
+    private static let costParsingRegex: NSRegularExpression? = {
+        let pattern = #"(\d+[.,]?\d*)\s*[€$£eur]*\s*[/x ]+\s*kw\s*[h·\-]?"#
+        return try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    }()
+
+    /// Parses a price-per-kWh out of a free-text usageCost. Returns nil if
+    /// the string doesn't unambiguously mention a kWh unit.
     static func parseCostPerKWh(_ raw: String) -> Decimal? {
-        // Matches "0.35", "0,35", "0.35 €", "0,35 €/kWh", "EUR 0.35/kWh", etc.
-        // Conservative: only returns a value when a kWh unit is mentioned.
+        parsePricePerKWh(from: raw)
+    }
+
+    private static func parsePricePerKWh(from raw: String?) -> Decimal? {
+        guard let raw else { return nil }
         let lowered = raw.lowercased()
         guard lowered.contains("kwh") || lowered.contains("kw·h") || lowered.contains("kw-h") else {
             return nil
         }
-
-        let pattern = #"(\d+[.,]?\d*)\s*[€$£eur]*\s*[/x ]+\s*kw\s*[h·\-]?"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return nil
-        }
+        guard let regex = costParsingRegex else { return nil }
         let nsString = raw as NSString
         let range = NSRange(location: 0, length: nsString.length)
         guard let match = regex.firstMatch(in: raw, options: [], range: range),
@@ -161,7 +176,37 @@ struct ChargingStation: Identifiable, Equatable, Sendable {
         return decimal
     }
 
-    enum SpeedCategory {
+    private static func parseIsFree(from raw: String?) -> Bool {
+        guard let cost = raw?.lowercased() else { return false }
+        return cost.contains("gratu") || cost.contains("free") || cost.contains("libre") || cost == "0"
+    }
+
+    private static func computeSpeedCategory(
+        maxPower: Double?,
+        connections: [ChargingConnection]
+    ) -> SpeedCategory {
+        if let maxPower {
+            // 22 kW is the practical "useful for a quick top-up" floor. Most
+            // urban public chargers in Spain sit at 22 kW AC; 50 kW+ are
+            // DC fast. We collapse both into .fast so the green pill /
+            // bolt badge actually fires for the chargers a driver cares
+            // about, instead of only DC fast which is rare in mixed-use
+            // areas. Anything below 22 kW remains slow/semi.
+            if maxPower >= 22 { return .fast }
+            if maxPower >= 11 { return .semiFast }
+            return .slow
+        }
+        // When OpenChargeMap doesn't report kW, infer from the connector type:
+        // CCS / CHAdeMO / NACS are always DC fast plugs.
+        for conn in connections {
+            if conn.shortName == "CCS" || conn.shortName == "CHAdeMO" || conn.shortName == "NACS" {
+                return .fast
+            }
+        }
+        return .unknown
+    }
+
+    enum SpeedCategory: Sendable {
         case fast, semiFast, slow, unknown
 
         var label: String {

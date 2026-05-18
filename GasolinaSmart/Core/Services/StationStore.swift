@@ -264,23 +264,18 @@ final class StationStore {
             matches = Array(matches.prefix(limit))
         }
 
-        let visibleStations = matches.map(\.station)
-
-        // Cheapest station + average price are computed for the primary fuel only.
-        let primaryMatches = matches.filter { $0.displayedFuel == primaryFuel }
-        let cheapestStation = primaryMatches.min { $0.displayedPrice < $1.displayedPrice }?.station
-
-        let averagePrice: Decimal?
-        if primaryMatches.isEmpty {
-            averagePrice = cachedAveragePrice
-        } else {
-            averagePrice = primaryMatches.map(\.displayedPrice).reduce(Decimal.zero, +)
-                / Decimal(primaryMatches.count)
-        }
-
+        var visibleStations: [FuelStation] = []
+        visibleStations.reserveCapacity(matches.count)
+        var cheapestStation: FuelStation?
+        var cheapestPrimaryPrice: Decimal?
+        var primarySum: Decimal = 0
+        var primaryCount: Int = 0
         var cheapestPriceByFuel: [FuelType: Decimal] = [:]
         var displayedFuelByStation: [String: FuelType] = [:]
+        displayedFuelByStation.reserveCapacity(matches.count)
+
         for match in matches {
+            visibleStations.append(match.station)
             displayedFuelByStation[match.station.id] = match.displayedFuel
             if let current = cheapestPriceByFuel[match.displayedFuel] {
                 if match.displayedPrice < current {
@@ -289,7 +284,19 @@ final class StationStore {
             } else {
                 cheapestPriceByFuel[match.displayedFuel] = match.displayedPrice
             }
+            if match.displayedFuel == primaryFuel {
+                primarySum += match.displayedPrice
+                primaryCount += 1
+                if cheapestPrimaryPrice == nil || match.displayedPrice < cheapestPrimaryPrice! {
+                    cheapestPrimaryPrice = match.displayedPrice
+                    cheapestStation = match.station
+                }
+            }
         }
+
+        let averagePrice: Decimal? = primaryCount == 0
+            ? cachedAveragePrice
+            : primarySum / Decimal(primaryCount)
 
         return NearbyFuelSummary(
             visibleStations: visibleStations,
@@ -376,16 +383,18 @@ final class StationStore {
             matches = Array(matches.prefix(limit))
         }
 
-        let visibleStations = matches.map(\.station)
-        let primaryMatches = matches.filter { $0.displayedFuel == primaryFuel }
-        let cheapestStation = primaryMatches.min { $0.displayedPrice < $1.displayedPrice }?.station
-        let averagePrice: Decimal? = primaryMatches.isEmpty
-            ? nil
-            : primaryMatches.map(\.displayedPrice).reduce(Decimal.zero, +) / Decimal(primaryMatches.count)
-
+        var visibleStations: [FuelStation] = []
+        visibleStations.reserveCapacity(matches.count)
+        var cheapestStation: FuelStation?
+        var cheapestPrimaryPrice: Decimal?
+        var primarySum: Decimal = 0
+        var primaryCount: Int = 0
         var cheapestPriceByFuel: [FuelType: Decimal] = [:]
         var displayedFuelByStation: [String: FuelType] = [:]
+        displayedFuelByStation.reserveCapacity(matches.count)
+
         for match in matches {
+            visibleStations.append(match.station)
             displayedFuelByStation[match.station.id] = match.displayedFuel
             if let current = cheapestPriceByFuel[match.displayedFuel] {
                 if match.displayedPrice < current {
@@ -394,7 +403,19 @@ final class StationStore {
             } else {
                 cheapestPriceByFuel[match.displayedFuel] = match.displayedPrice
             }
+            if match.displayedFuel == primaryFuel {
+                primarySum += match.displayedPrice
+                primaryCount += 1
+                if cheapestPrimaryPrice == nil || match.displayedPrice < cheapestPrimaryPrice! {
+                    cheapestPrimaryPrice = match.displayedPrice
+                    cheapestStation = match.station
+                }
+            }
         }
+
+        let averagePrice: Decimal? = primaryCount == 0
+            ? nil
+            : primarySum / Decimal(primaryCount)
 
         return NearbyFuelSummary(
             visibleStations: visibleStations,

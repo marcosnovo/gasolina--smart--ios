@@ -7,6 +7,12 @@ enum WidgetDataProvider {
         UserDefaults(suiteName: WidgetConstants.appGroupId)
     }
 
+    // Reused across update calls — JSON coders are not free to instantiate
+    // and we encode on every location/radius/fuel change. Stays on the
+    // main actor since WidgetDataProvider is called from the main MapView.
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
+
     static func update(
         cheapestStation: FuelStation,
         fuelType: FuelType,
@@ -73,9 +79,9 @@ enum WidgetDataProvider {
             fuelTypeUnit: fuelType.unit(for: country)
         )
 
-        if read() == data { return }
+        if data.hasSameVisibleContent(as: read()) { return }
 
-        if let encoded = try? JSONEncoder().encode(data) {
+        if let encoded = try? encoder.encode(data) {
             defaults.set(encoded, forKey: WidgetConstants.widgetDataKey)
         }
 
@@ -147,9 +153,9 @@ enum WidgetDataProvider {
             fuelTypeUnit: "€/kWh"
         )
 
-        if read() == data { return }
+        if data.hasSameVisibleContent(as: read()) { return }
 
-        if let encoded = try? JSONEncoder().encode(data) {
+        if let encoded = try? encoder.encode(data) {
             defaults.set(encoded, forKey: WidgetConstants.widgetDataKey)
         }
 
@@ -159,7 +165,7 @@ enum WidgetDataProvider {
     static func read() -> WidgetStationData? {
         guard let defaults = sharedDefaults,
               let data = defaults.data(forKey: WidgetConstants.widgetDataKey),
-              let decoded = try? JSONDecoder().decode(WidgetStationData.self, from: data) else {
+              let decoded = try? decoder.decode(WidgetStationData.self, from: data) else {
             return nil
         }
         return decoded

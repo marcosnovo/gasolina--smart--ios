@@ -201,12 +201,16 @@ final class UserPreferences {
     private let defaults: UserDefaults
     private let vehiclesKey = "vehicles_v2"
     private let selectedVehicleIdKey = "selectedVehicleId_v2"
+    // Reused across save/load — JSONCoders aren't free and we save on every
+    // setting change (favourites, vehicles, radius, …).
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
 
     init(userDefaults: UserDefaults = .standard) {
         self.defaults = userDefaults
         let loadedVehicles: [Vehicle]
         if let data = defaults.data(forKey: vehiclesKey),
-           let decoded = try? JSONDecoder().decode([Vehicle].self, from: data),
+           let decoded = try? decoder.decode([Vehicle].self, from: data),
            !decoded.isEmpty {
             loadedVehicles = decoded
         } else {
@@ -232,7 +236,7 @@ final class UserPreferences {
         let appearanceRaw = defaults.string(forKey: "appearance") ?? AppAppearance.system.rawValue
         appearance = AppAppearance(rawValue: appearanceRaw) ?? .system
         if let addrData = defaults.data(forKey: "favoriteAddresses"),
-           let decoded = try? JSONDecoder().decode([FavoriteAddress].self, from: addrData) {
+           let decoded = try? decoder.decode([FavoriteAddress].self, from: addrData) {
             favoriteAddresses = decoded
         } else {
             favoriteAddresses = []
@@ -308,14 +312,14 @@ final class UserPreferences {
     }
 
     private func persistToDisk() {
-        if let data = try? JSONEncoder().encode(vehicles) {
+        if let data = try? encoder.encode(vehicles) {
             defaults.set(data, forKey: vehiclesKey)
         }
         defaults.set(selectedVehicleId.uuidString, forKey: selectedVehicleIdKey)
         defaults.set(preferredRadiusKm, forKey: "preferredRadiusKm")
         defaults.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
         defaults.set(Array(favoriteStationIds), forKey: "favoriteStationIds")
-        if let addrData = try? JSONEncoder().encode(favoriteAddresses) {
+        if let addrData = try? encoder.encode(favoriteAddresses) {
             defaults.set(addrData, forKey: "favoriteAddresses")
         }
         defaults.set(appearance.rawValue, forKey: "appearance")

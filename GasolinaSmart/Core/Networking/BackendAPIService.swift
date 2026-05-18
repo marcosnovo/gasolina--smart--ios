@@ -13,6 +13,9 @@ actor BackendAPIService {
     private let ukBaseURL = "https://gasolina-smart-ios-production.up.railway.app"
 
     private let session: URLSession
+    // Reused across every API call. JSONDecoder is thread-safe for decoding
+    // (Foundation guarantee) and is private actor state, so this is safe.
+    private let decoder = JSONDecoder()
     private var lastHealthCheck: Date?
     private var lastHealthResult: Bool = true
 
@@ -124,7 +127,7 @@ actor BackendAPIService {
         guard let url = components.url else { throw BackendError.invalidURL }
         let (data, response) = try await session.data(from: url)
         try validateResponse(response)
-        return try JSONDecoder().decode(StationsResponse.self, from: data)
+        return try decoder.decode(StationsResponse.self, from: data)
     }
 
     // MARK: - All EV charging stations of a country
@@ -190,7 +193,7 @@ actor BackendAPIService {
         request.timeoutInterval = 60
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
-        return try JSONDecoder().decode(ChargingResponse.self, from: data)
+        return try decoder.decode(ChargingResponse.self, from: data)
     }
 
     // MARK: - All stations of a country (full snapshot)
@@ -209,7 +212,7 @@ actor BackendAPIService {
 
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
-        return try JSONDecoder().decode(StationsResponse.self, from: data)
+        return try decoder.decode(StationsResponse.self, from: data)
     }
 
     // MARK: - Cheapest
@@ -239,7 +242,7 @@ actor BackendAPIService {
         guard let url = components.url else { throw BackendError.invalidURL }
         let (data, response) = try await session.data(from: url)
         try validateResponse(response)
-        return try JSONDecoder().decode(CheapestResponse.self, from: data)
+        return try decoder.decode(CheapestResponse.self, from: data)
     }
 
     // MARK: - Station Detail
@@ -254,7 +257,7 @@ actor BackendAPIService {
         }
         let (data, response) = try await session.data(from: url)
         try validateResponse(response)
-        let detail = try JSONDecoder().decode(DetailResponse.self, from: data)
+        let detail = try decoder.decode(DetailResponse.self, from: data)
         return detail.station
     }
 
@@ -275,7 +278,7 @@ actor BackendAPIService {
         guard let url = components.url else { throw BackendError.invalidURL }
         let (data, response) = try await session.data(from: url)
         try validateResponse(response)
-        return try JSONDecoder().decode(MetaResponse.self, from: data)
+        return try decoder.decode(MetaResponse.self, from: data)
     }
 
     // MARK: - Countries
@@ -304,7 +307,7 @@ actor BackendAPIService {
         }
         let (data, response) = try await session.data(from: url)
         try validateResponse(response)
-        return try JSONDecoder().decode([CountryInfo].self, from: data)
+        return try decoder.decode([CountryInfo].self, from: data)
     }
 
     // MARK: - Price History
@@ -323,7 +326,7 @@ actor BackendAPIService {
         guard let url = components.url else { throw BackendError.invalidURL }
         let (data, response) = try await session.data(from: url)
         try validateResponse(response)
-        return try JSONDecoder().decode([PriceHistoryEntry].self, from: data)
+        return try decoder.decode([PriceHistoryEntry].self, from: data)
     }
 
     // MARK: - Health

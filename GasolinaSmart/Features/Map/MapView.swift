@@ -32,6 +32,12 @@ struct MapView: View {
     @State private var isAreaMode = false
     @State private var cachedChargingSummary: ChargingStationStore.ChargingSummary?
 
+    // Last location for which we ran `updateVisibleStations`. Used to skip
+    // redundant filter passes — CoreLocation can deliver several updates a
+    // few metres apart while the GPS settles, and re-running the full 11k+
+    // station summary for sub-50m moves is pure churn.
+    @State private var lastSummarizedLocation: CLLocation?
+
     var body: some View {
         ZStack {
             MapLibreMapView(
@@ -129,20 +135,30 @@ struct MapView: View {
             }
         }
         .onChange(of: locationManager.location) { _, newLocation in
-            updateVisibleStations()
-            updateChargingSummary()
             markReadyIfNeeded()
-            if let newLocation {
-                if preferences.autoDetectCountry,
-                   let detected = Country.detect(from: newLocation.coordinate),
-                   detected != preferences.selectedCountry {
-                    preferences.selectedCountry = detected
-                }
+            guard let newLocation else { return }
+
+            // Skip the heavy summary recomputation when the user hasn't really
+            // moved — CoreLocation can deliver several updates a few metres
+            // apart while the GPS settles. 50 m gives the radar enough
+            // resolution without thrashing.
+            let movedFarEnough = lastSummarizedLocation
+                .map { $0.distance(from: newLocation) > 50 } ?? true
+            if movedFarEnough {
+                lastSummarizedLocation = newLocation
+                updateVisibleStations()
+                updateChargingSummary()
+            }
+
+            if preferences.autoDetectCountry,
+               let detected = Country.detect(from: newLocation.coordinate),
+               detected != preferences.selectedCountry {
+                preferences.selectedCountry = detected
+            }
+            if preferences.effectiveShowChargingStations {
                 Task {
-                    if preferences.effectiveShowChargingStations {
-                        await chargingStore.loadAllCountryStations(country: preferences.selectedCountry)
-                        updateChargingStations()
-                    }
+                    await chargingStore.loadAllCountryStations(country: preferences.selectedCountry)
+                    updateChargingStations()
                 }
             }
         }
@@ -1127,6 +1143,11 @@ private struct StationListSheet: View {
     let onStationTapped: (FuelStation) -> Void
 
     @State private var selectedTab: SortTab = .recommended
+    // Cached sorted list + rank-by-id dictionary. Previously `sortedStations`
+    // was a computed property recomputed multiple times per body render and
+    // `rank(of:)` did an O(n) `firstIndex` lookup *per row* — O(n²) total.
+    @State private var sortedStations: [FuelStation] = []
+    @State private var rankById: [String: Int] = [:]
 
     private var loc: Loc { preferences.loc }
 
@@ -1174,7 +1195,7 @@ private struct StationListSheet: View {
                                 } label: {
                                     StationListRow(
                                         station: station,
-                                        rank: rank(of: station),
+                                        rank: rankById[station.id] ?? 0,
                                         distance: distance(for: station),
                                         price: station.price(for: fuelType),
                                         priceQuality: priceQuality(for: station),
@@ -1200,49 +1221,69 @@ private struct StationListSheet: View {
                 }
             }
         }
+        .onAppear { recomputeSortedStations() }
+        .onChange(of: selectedTab) { _, _ in recomputeSortedStations() }
+        .onChange(of: stations) { _, _ in recomputeSortedStations() }
     }
 
-    private var sortedStations: [FuelStation] {
+    private func recomputeSortedStations() {
         let withPrice = stations.filter { $0.price(for: fuelType) != nil }
+        let sorted: [FuelStation]
         switch selectedTab {
         case .price:
-            return withPrice.sorted { a, b in
+            sorted = withPrice.sorted { a, b in
                 let pa = a.price(for: fuelType) ?? .greatestFiniteMagnitude
                 let pb = b.price(for: fuelType) ?? .greatestFiniteMagnitude
                 return pa < pb
             }
         case .distance:
-            guard let location = userLocation else { return withPrice }
-            return withPrice.sorted { a, b in
-                a.distance(from: location) < b.distance(from: location)
+            if let location = userLocation {
+                sorted = withPrice.sorted { a, b in
+                    a.distance(from: location) < b.distance(from: location)
+                }
+            } else {
+                sorted = withPrice
             }
         case .recommended:
-            guard let location = userLocation else {
-                return withPrice.sorted { a, b in
+            if let location = userLocation {
+                // Pre-snap tank & consumption so the comparator doesn't go
+                // through `preferences` (which is an @Observable and triggers
+                // tracking) on every comparison.
+                let tankLiters = preferences.tankSizeLiters
+                let consumption = preferences.consumptionL100Km
+                sorted = withPrice.sorted { a, b in
+                    totalCost(for: a, location: location, tankLiters: tankLiters, consumption: consumption)
+                        < totalCost(for: b, location: location, tankLiters: tankLiters, consumption: consumption)
+                }
+            } else {
+                sorted = withPrice.sorted { a, b in
                     let pa = a.price(for: fuelType) ?? .greatestFiniteMagnitude
                     let pb = b.price(for: fuelType) ?? .greatestFiniteMagnitude
                     return pa < pb
                 }
             }
-            return withPrice.sorted { a, b in
-                totalCost(for: a, location: location) < totalCost(for: b, location: location)
-            }
         }
+        sortedStations = sorted
+        var ranks: [String: Int] = [:]
+        ranks.reserveCapacity(sorted.count)
+        for (idx, station) in sorted.enumerated() {
+            ranks[station.id] = idx + 1
+        }
+        rankById = ranks
     }
 
-    private func totalCost(for station: FuelStation, location: CLLocation) -> Double {
+    private func totalCost(
+        for station: FuelStation,
+        location: CLLocation,
+        tankLiters: Double,
+        consumption: Double
+    ) -> Double {
         guard let price = station.price(for: fuelType), price > 0 else { return .greatestFiniteMagnitude }
         let priceDouble = NSDecimalNumber(decimal: price).doubleValue
-        let tankLiters = preferences.tankSizeLiters
-        let consumption = preferences.consumptionL100Km
         let distanceKm = station.distanceKm(from: location)
         let fillCost = priceDouble * tankLiters
         let detourCost = distanceKm * 2 * (consumption / 100) * priceDouble
         return fillCost + detourCost
-    }
-
-    private func rank(of station: FuelStation) -> Int {
-        sortedStations.firstIndex(where: { $0.id == station.id }).map { $0 + 1 } ?? 0
     }
 
     private func distance(for station: FuelStation) -> Double? {

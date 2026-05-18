@@ -58,6 +58,40 @@ struct WidgetStationData: Codable, Equatable {
         return URL(string: "\(WidgetConstants.urlScheme)://navigate?url=\(encoded)") ?? deepLinkURL
     }
 
+    /// Field-by-field equality that ignores `lastUpdated`. Used by the
+    /// widget data provider to skip JSON encoding + `reloadAllTimelines`
+    /// when nothing visible to the user changed (the synthesised `==`
+    /// would always fail because we stamp `Date()` on each update).
+    func hasSameVisibleContent(as other: WidgetStationData?) -> Bool {
+        guard let other else { return false }
+        return stationId == other.stationId
+            && stationName == other.stationName
+            && brand == other.brand
+            && price == other.price
+            && priceFormatted == other.priceFormatted
+            && fuelTypeRaw == other.fuelTypeRaw
+            && fuelTypeLabel == other.fuelTypeLabel
+            && fuelTypeShort == other.fuelTypeShort
+            && distanceKm == other.distanceKm
+            && address == other.address
+            && municipality == other.municipality
+            && stationLatitude == other.stationLatitude
+            && stationLongitude == other.stationLongitude
+            && userLatitude == other.userLatitude
+            && userLongitude == other.userLongitude
+            && averagePrice == other.averagePrice
+            && savingFormatted == other.savingFormatted
+            && opportunity == other.opportunity
+            && vehicleName == other.vehicleName
+            && vehicleTypeRaw == other.vehicleTypeRaw
+            && vehicleColorRaw == other.vehicleColorRaw
+            && radiusKm == other.radiusKm
+            && stationCount == other.stationCount
+            && isDarkMode == other.isDarkMode
+            && navigationURLString == other.navigationURLString
+            && fuelTypeUnit == other.fuelTypeUnit
+    }
+
     static let placeholder = WidgetStationData(
         stationId: "placeholder",
         stationName: "E.S. La Estacion",
