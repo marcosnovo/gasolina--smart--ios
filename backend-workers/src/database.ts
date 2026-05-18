@@ -179,8 +179,9 @@ async function readExistingPrices(
 ): Promise<Map<string, Record<string, number>>> {
   if (stationIds.length === 0) return new Map();
 
-  // D1 doesn't support array binding; chunk by IN-list size to stay readable.
-  const CHUNK = 200;
+  // D1 caps prepared-statement bound variables at 100 (vs SQLite's default 999).
+  // Keep below that with a safety margin.
+  const CHUNK = 90;
   const out = new Map<string, Record<string, number>>();
 
   for (let i = 0; i < stationIds.length; i += CHUNK) {
