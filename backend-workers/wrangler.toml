@@ -1,0 +1,36 @@
+name = "gasolina-smart-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Logs visible in dashboard + `wrangler tail`
+[observability]
+enabled = true
+
+# --- D1 database (SQLite serverless) ---
+# After running `wrangler d1 create gasolina-smart-db`, replace `database_id` below
+# with the value Cloudflare returned, then run:
+#   wrangler d1 execute gasolina-smart-db --remote --file=./schema.sql
+[[d1_databases]]
+binding = "DB"
+database_name = "gasolina-smart-db"
+database_id = "REPLACE_WITH_D1_ID"
+
+# --- R2 bucket (snapshots of station data per country) ---
+# Create with: wrangler r2 bucket create gasolina-smart-snapshots
+[[r2_buckets]]
+binding = "SNAPSHOTS"
+bucket_name = "gasolina-smart-snapshots"
+
+# --- Cron triggers (added in Phase 6 — kept here for reference) ---
+# [triggers]
+# crons = [
+#   "*/15 * * * *",   # ES every 15 min
+#   "*/30 * * * *",   # FR every 30 min
+#   "*/15 * * * *",   # GB every 15 min
+#   "*/15 * * * *",   # DE every 15 min
+#   "0 6 * * *",      # IT once daily at 06:00 UTC
+# ]
+
+# --- Secrets (set via `wrangler secret put NAME`) ---
+# TANKERKOENIG_API_KEY — required for the DE fetcher (Phase 5)
