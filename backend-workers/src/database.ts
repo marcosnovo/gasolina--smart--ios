@@ -276,6 +276,58 @@ export async function queryStationsNearby(
   }));
 }
 
+// Full-country dump: returns every station of a country with its price map.
+// One indexed scan on stations + one JOIN on prices — no chunking required
+// because we read the whole table sequentially rather than via IN-lists.
+export async function queryAllStations(
+  db: D1Database,
+  country: string
+): Promise<StationResult[]> {
+  const stationsRes = await db
+    .prepare(
+      "SELECT * FROM stations WHERE country = ? ORDER BY id"
+    )
+    .bind(country)
+    .all<StationRow>();
+
+  if (stationsRes.results.length === 0) return [];
+
+  const pricesRes = await db
+    .prepare(
+      `SELECT p.station_id, p.fuel_type, p.price
+       FROM prices p
+       JOIN stations s ON s.id = p.station_id
+       WHERE s.country = ?`
+    )
+    .bind(country)
+    .all<PriceRow>();
+
+  const priceMap = new Map<string, Record<string, number>>();
+  for (const row of pricesRes.results) {
+    let map = priceMap.get(row.station_id);
+    if (!map) {
+      map = {};
+      priceMap.set(row.station_id, map);
+    }
+    map[row.fuel_type] = row.price;
+  }
+
+  return stationsRes.results.map((s) => ({
+    id: s.id,
+    name: s.name,
+    brand: s.brand,
+    address: s.address,
+    municipality: s.municipality,
+    province: s.province,
+    latitude: s.latitude,
+    longitude: s.longitude,
+    country: s.country,
+    updated_at: s.updated_at,
+    distance_km: 0,
+    prices: priceMap.get(s.id) || {},
+  }));
+}
+
 export async function queryCheapest(
   db: D1Database,
   lat: number,

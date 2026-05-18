@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   queryStationsNearby,
+  queryAllStations,
   queryCheapest,
   queryAveragePrice,
   queryStationDetail,
@@ -111,6 +112,26 @@ app.get("/api/stations", async (c) => {
     count: stations.length,
     average_price: avg?.average ?? null,
     zone_count: avg?.count ?? null,
+    last_updated: lastUpdated,
+  });
+});
+
+// --- All stations of a country (full snapshot) ---
+//
+// Returns every station of a country in one shot — the iOS client fetches
+// this once on country switch and runs all subsequent searches locally,
+// so the experience stays snappy and we avoid hammering the worker.
+app.get("/api/stations/all", async (c) => {
+  const country = c.req.query("country") || "ES";
+
+  const stations = await queryAllStations(c.env.DB, country);
+  const lastUpdated = await getCountryMetaValue(c.env.DB, country, "last_fetch");
+
+  return c.json({
+    stations,
+    count: stations.length,
+    average_price: null,
+    zone_count: null,
     last_updated: lastUpdated,
   });
 });
