@@ -71,6 +71,22 @@ export const COUNTRY_INFO: Record<string, CountryInfo> = {
       license: "IODL 2.0",
     },
   },
+  US: {
+    displayName: "United States",
+    currency: "USD",
+    currencySymbol: "$",
+    // No public station-level fuel-price feed exists in the US (EIA only
+    // publishes state-weekly averages, GasBuddy has no public API). We
+    // ship the US as charging-only — `supportedFuels: []` is what the
+    // iOS client uses to hide the fuel UI for this country.
+    supportedFuels: [],
+    dataFreshness: "daily",
+    attribution: {
+      text: "Charging data © OpenChargeMap contributors",
+      url: "https://openchargemap.org",
+      license: "CC BY-SA 4.0",
+    },
+  },
 };
 
 export const SUPPORTED_COUNTRIES = Object.keys(COUNTRY_INFO);

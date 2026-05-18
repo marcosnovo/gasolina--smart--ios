@@ -145,34 +145,51 @@ struct OnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
                     .padding(.bottom, 24)
 
-                Text(loc.fuel)
-                    .font(.caption)
-                    .foregroundStyle(Color(.secondaryLabel))
-                    .textCase(.uppercase)
-                    .padding(.bottom, 4)
+                if selectedCountry.hasFuelData {
+                    Text(loc.fuel)
+                        .font(.caption)
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .textCase(.uppercase)
+                        .padding(.bottom, 4)
 
-                VStack(spacing: 0) {
-                    ForEach(selectedCountry.supportedFuelTypes) { fuel in
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                selectedFuelType = fuel
-                            }
-                        } label: {
-                            HStack {
-                                Text(fuel.displayName(for: selectedCountry))
-                                    .font(.body)
-                                Spacer()
-                                if selectedFuelType == fuel {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(.blue)
+                    VStack(spacing: 0) {
+                        ForEach(selectedCountry.supportedFuelTypes) { fuel in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedFuelType = fuel
                                 }
+                            } label: {
+                                HStack {
+                                    Text(fuel.displayName(for: selectedCountry))
+                                        .font(.body)
+                                    Spacer()
+                                    if selectedFuelType == fuel {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                                .padding(.vertical, 12)
                             }
-                            .padding(.vertical, 12)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.bottom, 32)
+                } else {
+                    // Charging-only country (US): no station-level fuel
+                    // data, so the fuel picker is irrelevant. Inform the
+                    // user and proceed with the country's placeholder fuel.
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "bolt.car.fill")
+                            .foregroundStyle(Theme.Colors.charging)
+                        Text("\(selectedCountry.displayName) is charging-only — fuel prices aren't available, but you'll see EV charging points.")
+                            .font(.footnote)
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+                    .padding(12)
+                    .background(Theme.Colors.charging.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                    .padding(.bottom, 32)
                 }
-                .padding(.bottom, 32)
 
                 OnboardingButton(title: loc.onboardingContinue) {
                     let name = vehicleName.trimmingCharacters(in: .whitespaces)

@@ -98,8 +98,11 @@ final class UserPreferences {
                     fuelFilterOverride = nil
                 }
                 // If the vehicle's own fuel isn't supported either, fall back
-                // to the country's default (becomes the new override).
-                if !supported.contains(selectedVehicle.fuelType), fuelFilterOverride == nil {
+                // to the country's default (becomes the new override). Skip
+                // when the country has no fuel data — no override makes sense.
+                if selectedCountry.hasFuelData,
+                   !supported.contains(selectedVehicle.fuelType),
+                   fuelFilterOverride == nil {
                     fuelFilterOverride = selectedCountry.defaultFuel
                 }
                 save()
@@ -163,7 +166,10 @@ final class UserPreferences {
     // Every fuel the selected vehicle can actually run on. Mono-fuel vehicles
     // return just [primary]; LPG-equipped vehicles also include .glp. Battery
     // electric vehicles return [] — they use charging points instead.
+    // Fuel-less countries (US) return [] regardless of vehicle so the map
+    // never queries non-existent fuel data.
     var vehicleSupportedFuels: [FuelType] {
+        if !selectedCountry.hasFuelData { return [] }
         if selectedVehicle.isElectric { return [] }
         var fuels: [FuelType] = [selectedVehicle.fuelType]
         if selectedVehicle.hasGLP, !fuels.contains(.glp) {
@@ -173,9 +179,19 @@ final class UserPreferences {
     }
 
     /// True when charging-station markers should be visible: either the user
-    /// explicitly enabled them, or the active vehicle is an EV (forcing it on).
+    /// explicitly enabled them, the active vehicle is an EV (forcing it on),
+    /// or the active country has no fuel data (US — charging is the only
+    /// thing we can show).
     var effectiveShowChargingStations: Bool {
-        showChargingStations || selectedVehicle.isElectric
+        showChargingStations || selectedVehicle.isElectric || !selectedCountry.hasFuelData
+    }
+
+    /// True when the map is operating in a "chargers only" mode — either
+    /// because the vehicle is electric or because the country has no fuel
+    /// data. Drives UI decisions in MapView (vehicle pill chip, area
+    /// search branch, vehicle-switch state cleanup).
+    var isChargingOnlyMode: Bool {
+        selectedVehicle.isElectric || !selectedCountry.hasFuelData
     }
 
     var tankSizeLiters: Double {

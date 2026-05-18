@@ -317,7 +317,7 @@ async function runScheduled(event: ScheduledController, env: Env): Promise<void>
     console.log("[cron] Daily IT + EV charging trigger");
     await runFetcher(env.DB, "IT", () => fetchItaly(env.DB));
 
-    for (const country of ["ES", "FR", "GB", "DE", "IT"]) {
+    for (const country of ["ES", "FR", "GB", "DE", "IT", "US"]) {
       if (await shouldFetchChargingStations(env.DB, country, 60 * 12)) {
         await runFetcher(env.DB, country, () =>
           fetchOpenChargeMap(env.DB, country, env.OPENCHARGEMAP_API_KEY)

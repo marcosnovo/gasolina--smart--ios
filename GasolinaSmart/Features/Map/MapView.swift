@@ -126,8 +126,11 @@ struct MapView: View {
             updateVisibleStations()
             locationManager.requestLocation()
             // Full-country snapshot — covers the whole map, so panning
-            // anywhere has data without needing more fetches.
-            await store.loadAllCountryStations()
+            // anywhere has data without needing more fetches. Skipped for
+            // countries with no fuel data (e.g. US, charging-only).
+            if preferences.selectedCountry.hasFuelData {
+                await store.loadAllCountryStations()
+            }
             if preferences.effectiveShowChargingStations {
                 await chargingStore.loadAllCountryStations(country: preferences.selectedCountry)
                 updateChargingStations()
@@ -194,6 +197,9 @@ struct MapView: View {
         .onChange(of: chargingStore.stations) { _, _ in
             updateChargingStations()
             updateChargingSummary()
+            // In fuel-less countries the charging store is the readiness
+            // signal — check after every load.
+            markReadyIfNeeded()
         }
         .onChange(of: preferences.effectiveShowChargingStations) { _, showCharging in
             if showCharging {
@@ -215,7 +221,9 @@ struct MapView: View {
             visibleChargingStations = []
             cachedChargingSummary = nil
             Task {
-                await store.loadAllCountryStations()
+                if newCountry.hasFuelData {
+                    await store.loadAllCountryStations()
+                }
                 if preferences.effectiveShowChargingStations {
                     // Charging snapshot is country-scoped too; reload for the
                     // new country and refresh the EV radar.
@@ -276,7 +284,7 @@ struct MapView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showStationList) {
-            if preferences.selectedVehicle.isElectric {
+            if preferences.isChargingOnlyMode {
                 ChargingListSheet(
                     stations: chargingNearbyForList,
                     userLocation: locationManager.location,
@@ -376,8 +384,9 @@ struct MapView: View {
             // - Combustion mono-fuel: shows the fuel code, no action.
             // - Combustion dual-fuel: shows the active fuel + swap icon;
             //   tapping cycles GLP ↔ Gasoline.
-            // - Electric: shows a bolt + "EV" label; no fuel selection.
-            if preferences.selectedVehicle.isElectric {
+            // - Electric (or any country without fuel data, e.g. US):
+            //   shows a bolt + "EV" label; no fuel selection.
+            if preferences.isChargingOnlyMode {
                 HStack(spacing: 4) {
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 11, weight: .bold))
@@ -548,7 +557,7 @@ struct MapView: View {
     private func applyAreaSearch(_ area: VisibleMapArea) {
         // The store holds the full country, so this is an in-memory filter.
         // No network call, no spinner — feels instant.
-        if preferences.selectedVehicle.isElectric {
+        if preferences.isChargingOnlyMode {
             let summary = chargingStore.areaSummary(
                 minLatitude: area.minLatitude,
                 maxLatitude: area.maxLatitude,
@@ -596,7 +605,7 @@ struct MapView: View {
 
     private var bottomContent: some View {
         VStack(spacing: Theme.Spacing.sm) {
-            if preferences.selectedVehicle.isElectric {
+            if preferences.isChargingOnlyMode {
                 electricBottomContent
             } else {
                 combustionBottomContent
@@ -687,13 +696,14 @@ struct MapView: View {
     private func handleVehicleSwitch() {
         exitAreaMode()
 
-        // When the new vehicle is an EV, force-clear all fuel-station state
-        // up-front. `updateVisibleStations()` already returns an empty
-        // summary for EVs (vehicleSupportedFuels is []), but doing it
+        // When we're entering charging-only mode (EV vehicle or fuel-less
+        // country), force-clear all fuel-station state up-front.
+        // `updateVisibleStations()` already returns an empty summary for
+        // these cases (vehicleSupportedFuels is []), but doing it
         // explicitly here closes a rendering gap where the previous
         // vehicle's pills could linger on the map when pendingArea was set
         // and the next state mutation hadn't pushed yet.
-        if preferences.selectedVehicle.isElectric {
+        if preferences.isChargingOnlyMode {
             visibleStations = []
             cachedCheapest = nil
             cachedAveragePrice = nil
@@ -718,7 +728,7 @@ struct MapView: View {
     }
 
     private func updateChargingSummary() {
-        guard preferences.selectedVehicle.isElectric,
+        guard preferences.isChargingOnlyMode,
               let location = locationManager.location else {
             cachedChargingSummary = nil
             return
@@ -729,7 +739,7 @@ struct MapView: View {
             limit: 200,
             connectorFilter: preferences.selectedVehicle.preferredConnectors
         )
-        // Keep the home-screen widget in sync with the EV radar card.
+        // Keep the home-screen widget in sync with the charging radar card.
         updateWidgetData(location: location)
     }
 
@@ -835,7 +845,17 @@ struct MapView: View {
 
     private func markReadyIfNeeded() {
         guard !initialLoadComplete else { return }
-        if locationManager.location != nil, !store.allStations.isEmpty {
+        guard locationManager.location != nil else { return }
+        // For countries without fuel data (US), the fuel-station store will
+        // never populate. Treat the map as ready once the charging snapshot
+        // has loaded — or immediately if neither dataset is expected.
+        let isReady: Bool
+        if preferences.selectedCountry.hasFuelData {
+            isReady = !store.allStations.isEmpty
+        } else {
+            isReady = !chargingStore.stations.isEmpty
+        }
+        if isReady {
             withAnimation(.easeIn(duration: 0.3)) {
                 initialLoadComplete = true
             }
@@ -874,7 +894,7 @@ struct MapView: View {
     }
 
     private func updateWidgetData(location: CLLocation) {
-        if preferences.selectedVehicle.isElectric {
+        if preferences.isChargingOnlyMode {
             // EV path: push the cheapest charging point into the same widget
             // slot so users get a consistent "tap to navigate" experience
             // regardless of vehicle type.
@@ -936,9 +956,10 @@ struct MapView: View {
     }
 
     private func updateChargingStations() {
-        // When the user is exploring via "Search this area" on an EV, their
-        // chosen rectangle is authoritative — don't snap back to the radius.
-        if isAreaMode, preferences.selectedVehicle.isElectric { return }
+        // When the user is exploring via "Search this area" in charging-only
+        // mode, their chosen rectangle is authoritative — don't snap back
+        // to the radius.
+        if isAreaMode, preferences.isChargingOnlyMode { return }
 
         guard preferences.effectiveShowChargingStations, let location = locationManager.location else {
             visibleChargingStations = []

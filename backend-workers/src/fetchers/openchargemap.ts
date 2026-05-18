@@ -55,6 +55,36 @@ const COUNTRY_BBOXES: Record<string, BBox[]> = {
     { minLat: 41.5, maxLat: 44.5, minLon: 6.6, maxLon: 18.5, label: "IT-C" },
     { minLat: 44.5, maxLat: 47.1, minLon: 6.6, maxLon: 18.5, label: "IT-N" },
   ],
+  // USA: CONUS plus AK and HI. The USA has ~70-80k public chargers on
+  // OpenChargeMap — well above the 5000-per-request cap — so we use a
+  // 4×4 CONUS grid plus single boxes for Alaska and Hawaii. Coastal
+  // boxes (CA + NY metro) skirt the cap; if a box logs exactly 5000
+  // raw POIs we should subdivide that quadrant.
+  US: [
+    // CONUS row 1 (south): 24.5°N–31.0°N
+    { minLat: 24.5, maxLat: 31.0, minLon: -125, maxLon: -110.4, label: "US-SW1" },
+    { minLat: 24.5, maxLat: 31.0, minLon: -110.4, maxLon: -95.7, label: "US-SW2" },
+    { minLat: 24.5, maxLat: 31.0, minLon: -95.7, maxLon: -81.1, label: "US-SE1" },
+    { minLat: 24.5, maxLat: 31.0, minLon: -81.1, maxLon: -66.5, label: "US-SE2" },
+    // CONUS row 2: 31.0°N–37.5°N
+    { minLat: 31.0, maxLat: 37.5, minLon: -125, maxLon: -110.4, label: "US-MW1" },
+    { minLat: 31.0, maxLat: 37.5, minLon: -110.4, maxLon: -95.7, label: "US-MW2" },
+    { minLat: 31.0, maxLat: 37.5, minLon: -95.7, maxLon: -81.1, label: "US-ME1" },
+    { minLat: 31.0, maxLat: 37.5, minLon: -81.1, maxLon: -66.5, label: "US-ME2" },
+    // CONUS row 3: 37.5°N–43.5°N
+    { minLat: 37.5, maxLat: 43.5, minLon: -125, maxLon: -110.4, label: "US-CW1" },
+    { minLat: 37.5, maxLat: 43.5, minLon: -110.4, maxLon: -95.7, label: "US-CW2" },
+    { minLat: 37.5, maxLat: 43.5, minLon: -95.7, maxLon: -81.1, label: "US-CE1" },
+    { minLat: 37.5, maxLat: 43.5, minLon: -81.1, maxLon: -66.5, label: "US-CE2" },
+    // CONUS row 4 (north): 43.5°N–49.5°N
+    { minLat: 43.5, maxLat: 49.5, minLon: -125, maxLon: -110.4, label: "US-NW1" },
+    { minLat: 43.5, maxLat: 49.5, minLon: -110.4, maxLon: -95.7, label: "US-NW2" },
+    { minLat: 43.5, maxLat: 49.5, minLon: -95.7, maxLon: -81.1, label: "US-NE1" },
+    { minLat: 43.5, maxLat: 49.5, minLon: -81.1, maxLon: -66.5, label: "US-NE2" },
+    // Alaska + Hawaii
+    { minLat: 51.0, maxLat: 72.0, minLon: -180, maxLon: -130, label: "US-AK" },
+    { minLat: 18.5, maxLat: 22.5, minLon: -161, maxLon: -154, label: "US-HI" },
+  ],
 };
 
 interface OCMConnection {
