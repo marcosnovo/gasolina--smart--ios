@@ -435,25 +435,43 @@ export async function queryPriceHistory(
   return res.results;
 }
 
-export async function queryCountryStats(
-  db: D1Database
-): Promise<Array<{ country: string; station_count: number; last_fetched_at: string | null }>> {
-  const countriesRes = await db
-    .prepare("SELECT country, COUNT(*) as cnt FROM stations GROUP BY country ORDER BY country")
-    .all<{ country: string; cnt: number }>();
+export interface CountryStats {
+  country: string;
+  station_count: number;
+  charging_count: number;
+  last_fetched_at: string | null;
+  charging_last_fetched_at: string | null;
+}
 
-  const out: Array<{ country: string; station_count: number; last_fetched_at: string | null }> = [];
+export async function queryCountryStats(db: D1Database): Promise<CountryStats[]> {
+  // Aggregate counts straight from the source tables — meta keys can be
+  // stale or partially written, the row counts can't lie.
+  const [fuelRes, chargingRes] = await Promise.all([
+    db.prepare("SELECT country, COUNT(*) as cnt FROM stations GROUP BY country").all<{ country: string; cnt: number }>(),
+    db.prepare("SELECT country, COUNT(*) as cnt FROM charging_stations GROUP BY country").all<{ country: string; cnt: number }>(),
+  ]);
 
-  for (const c of countriesRes.results) {
-    const meta = await db
+  const fuelMap = new Map(fuelRes.results.map((r) => [r.country, r.cnt]));
+  const chargingMap = new Map(chargingRes.results.map((r) => [r.country, r.cnt]));
+  const allCountries = new Set<string>([...fuelMap.keys(), ...chargingMap.keys()]);
+
+  const out: CountryStats[] = [];
+  for (const country of [...allCountries].sort()) {
+    const lastFetch = await db
       .prepare("SELECT value FROM country_meta WHERE country = ? AND key = 'last_fetch'")
-      .bind(c.country)
+      .bind(country)
+      .first<{ value: string }>();
+    const chargingLastFetch = await db
+      .prepare("SELECT value FROM country_meta WHERE country = ? AND key = 'charging_last_fetch'")
+      .bind(country)
       .first<{ value: string }>();
 
     out.push({
-      country: c.country,
-      station_count: c.cnt,
-      last_fetched_at: meta?.value ?? null,
+      country,
+      station_count: fuelMap.get(country) ?? 0,
+      charging_count: chargingMap.get(country) ?? 0,
+      last_fetched_at: lastFetch?.value ?? null,
+      charging_last_fetched_at: chargingLastFetch?.value ?? null,
     });
   }
 
@@ -590,6 +608,21 @@ export async function saveChargingStations(
   for (let i = 0; i < stmts.length; i += CHUNK) {
     await db.batch(stmts.slice(i, i + CHUNK));
   }
+
+  // Same fix as saveStations: refresh charging_station_count from the
+  // actual table count so it stays accurate across cron runs.
+  const countRow = await db
+    .prepare(`SELECT COUNT(*) AS c FROM charging_stations WHERE country = ?`)
+    .bind(country)
+    .first<{ c: number }>();
+  const tableCount = countRow?.c ?? stations.length;
+  await db
+    .prepare(
+      `INSERT INTO country_meta (country, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(country, key) DO UPDATE SET value = excluded.value`
+    )
+    .bind(country, "charging_station_count", String(tableCount))
+    .run();
 
   return { saved: true, count: stations.length };
 }

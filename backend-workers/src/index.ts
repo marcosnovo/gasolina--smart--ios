@@ -43,6 +43,27 @@ app.get("/health", (c) =>
   c.json({ status: "ok", timestamp: new Date().toISOString() })
 );
 
+// Railway fallback base — gov.uk filters Cloudflare's outbound IPs so
+// UK fuel data lives there instead of in the Worker's D1.
+const RAILWAY_FALLBACK_URL = "https://gasolina-smart-ios-production.up.railway.app";
+
+interface RailwayMetaResponse {
+  station_count?: number;
+  last_fetch?: string | null;
+}
+
+async function fetchUKFuelStatsFromRailway(): Promise<RailwayMetaResponse | null> {
+  try {
+    const resp = await fetch(`${RAILWAY_FALLBACK_URL}/api/meta?country=GB`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as RailwayMetaResponse;
+  } catch {
+    return null;
+  }
+}
+
 app.get("/api/health", async (c) => {
   const stats = await queryCountryStats(c.env.DB);
   const statsMap = new Map(stats.map((s) => [s.country, s]));
@@ -51,19 +72,40 @@ app.get("/api/health", async (c) => {
   for (const code of SUPPORTED_COUNTRIES) {
     const stat = statsMap.get(code);
     const lastError = await getCountryMetaValue(c.env.DB, code, "last_error");
-    const lastFetch = stat?.last_fetched_at ?? null;
-    const stationsCount = stat?.station_count ?? 0;
+    let lastFetch = stat?.last_fetched_at ?? null;
+    let stationsCount = stat?.station_count ?? 0;
+    const chargingCount = stat?.charging_count ?? 0;
+    const chargingLastFetch = stat?.charging_last_fetched_at ?? null;
+
+    // UK fuel data lives on the Railway fallback because gov.uk filters
+    // Cloudflare's outbound IPs. Bridge the count + last-fetch over so
+    // /api/health gives a complete picture of every country, even
+    // though this Worker doesn't store UK fuel rows itself.
+    let delegated: string | undefined;
+    if (code === "GB") {
+      const railway = await fetchUKFuelStatsFromRailway();
+      if (railway) {
+        stationsCount = railway.station_count ?? stationsCount;
+        lastFetch = railway.last_fetch ?? lastFetch;
+        delegated = "railway";
+      }
+    }
 
     let status: string;
     let reason: string | undefined;
 
-    if (lastError && lastError.includes("PAUSED:")) {
+    if (code === "GB" && delegated) {
+      // We deliberately don't run the UK fetcher on this Worker, so any
+      // stale `last_error` from before that change is noise. Status
+      // reflects whether the Railway fallback has data.
+      status = stationsCount > 0 ? "delegated" : "waiting";
+    } else if (lastError && lastError.includes("PAUSED:")) {
       status = "paused";
       reason = lastError.replace(/^.*PAUSED:\s*/, "");
     } else if (lastError) {
       status = "error";
       reason = lastError;
-    } else if (stationsCount > 0) {
+    } else if (stationsCount > 0 || chargingCount > 0) {
       status = "ok";
     } else {
       status = "waiting";
@@ -72,7 +114,10 @@ app.get("/api/health", async (c) => {
     countries[code] = {
       status,
       stationsCount,
+      chargingCount,
       lastFetch,
+      chargingLastFetch,
+      ...(delegated ? { delegatedTo: delegated } : {}),
       ...(reason ? { reason } : {}),
     };
   }
@@ -84,11 +129,17 @@ app.get("/api/health", async (c) => {
 
 app.get("/api/meta", async (c) => {
   const country = c.req.query("country") || "ES";
-  const lastFetch = await getCountryMetaValue(c.env.DB, country, "last_fetch");
-  const stationCount = await getCountryMetaValue(c.env.DB, country, "station_count");
+  const [lastFetch, stationCount, chargingLastFetch, chargingCount] = await Promise.all([
+    getCountryMetaValue(c.env.DB, country, "last_fetch"),
+    getCountryMetaValue(c.env.DB, country, "station_count"),
+    getCountryMetaValue(c.env.DB, country, "charging_last_fetch"),
+    getCountryMetaValue(c.env.DB, country, "charging_station_count"),
+  ]);
   return c.json({
     last_fetch: lastFetch,
     station_count: parseInt(stationCount || "0"),
+    charging_last_fetch: chargingLastFetch,
+    charging_station_count: parseInt(chargingCount || "0"),
   });
 });
 
