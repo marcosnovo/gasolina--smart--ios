@@ -45,17 +45,22 @@ struct CountryFlagView: View {
     }
 }
 
-// MARK: - Spain (red / yellow-2x / red)
+// MARK: - Spain (red / yellow-2x / red — official 1:2:1 ratio)
 
 private struct SpainFlag: View {
     private let red = Color(red: 0.78, green: 0.10, blue: 0.18)
     private let yellow = Color(red: 0.98, green: 0.78, blue: 0.08)
 
     var body: some View {
-        VStack(spacing: 0) {
-            red.frame(maxHeight: .infinity)
-            yellow.frame(maxHeight: .infinity).layoutPriority(2)
-            red.frame(maxHeight: .infinity)
+        // Explicit proportions via GeometryReader — using `frame(maxHeight: .infinity)`
+        // + layoutPriority squashed the red bands to zero at small sizes.
+        GeometryReader { geo in
+            let h = geo.size.height
+            VStack(spacing: 0) {
+                red.frame(height: h * 0.25)
+                yellow.frame(height: h * 0.50)
+                red.frame(height: h * 0.25)
+            }
         }
     }
 }
