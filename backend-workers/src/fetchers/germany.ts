@@ -72,8 +72,15 @@ const DE_GRID: Array<{ lat: number; lng: number; label: string }> = [
 ];
 
 const MAX_RADIUS = 25;
+// Tankerkönig's CC service is rate-limited and frequently returns 503
+// under load. The previous implementation retried recursively without a
+// cap and used a 5s sleep, which made the Worker hit its CPU/wall-time
+// limit before it could save anything. We now use bounded exponential
+// backoff and accept that a flaky point will be picked up by the next
+// 15-min cron run.
+const MAX_RETRIES = 2;
 
-async function fetchArea(lat: number, lng: number, apiKey: string): Promise<TKStation[]> {
+async function fetchArea(lat: number, lng: number, apiKey: string, attempt: number = 0): Promise<TKStation[]> {
   const url = `${BASE_URL}?lat=${lat}&lng=${lng}&rad=${MAX_RADIUS}&sort=dist&type=all&apikey=${apiKey}`;
 
   const controller = new AbortController();
@@ -87,10 +94,11 @@ async function fetchArea(lat: number, lng: number, apiKey: string): Promise<TKSt
   }
 
   if (!response.ok) {
-    if (response.status === 503) {
-      console.warn("[fetcher:DE] API temporarily unavailable, waiting 5s...");
-      await new Promise((r) => setTimeout(r, 5000));
-      return fetchArea(lat, lng, apiKey);
+    if (response.status === 503 && attempt < MAX_RETRIES) {
+      const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s
+      console.warn(`[fetcher:DE] 503 from API, retry ${attempt + 1}/${MAX_RETRIES} in ${backoffMs}ms`);
+      await new Promise((r) => setTimeout(r, backoffMs));
+      return fetchArea(lat, lng, apiKey, attempt + 1);
     }
     throw new Error(`Tankerkoenig API returned ${response.status}`);
   }
@@ -155,9 +163,14 @@ export async function fetchGermany(
 
       console.log(`[fetcher:DE] ${point.label}: +${stations.length} raw, ${seen.size} unique total`);
     } catch (e) {
+      // Don't escalate — Tankerkönig's CC service is flaky, so we accept
+      // partial coverage on a single run and let the 15-min cron fill the
+      // gaps next pass.
       console.error(`[fetcher:DE] Failed for ${point.label}:`, e);
     }
-    await new Promise((r) => setTimeout(r, 250));
+    // 800ms spacing keeps us politely under their fair-use radar while
+    // still finishing all 40 points well within the Worker wall-time.
+    await new Promise((r) => setTimeout(r, 800));
   }
 
   if (allStations.length > 0) {
