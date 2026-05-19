@@ -42,9 +42,8 @@ struct CountryTransitionOverlay: View {
             .ignoresSafeArea()
 
             VStack(spacing: 18) {
-                Text(country.flag)
-                    .font(.system(size: 120))
-                    .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
+                CountryFlagView(country: country, height: 110, cornerRadius: 14, withShadow: false)
+                    .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
                     .scaleEffect(phase == .enter ? 0.6 : 1.0)
                     .opacity(phase == .enter ? 0 : 1)
 

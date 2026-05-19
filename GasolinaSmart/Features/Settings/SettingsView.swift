@@ -43,7 +43,7 @@ struct SettingsView: View {
                     }
 
                     SettingsCard {
-                        summaryRow(icon: "globe", color: .green, title: loc.settingsCountry, value: countrySummary) {
+                        countrySummaryRow {
                             showCountrySheet = true
                         }
                         SettingsDivider()
@@ -180,6 +180,40 @@ struct SettingsView: View {
                     .foregroundStyle(Color(.label))
                 Spacer()
                 Text(value)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Specialised row for the country setting: renders the active country
+    /// as a CountryFlagView instead of an emoji so it matches the rest of
+    /// the picker / transition design.
+    private func countrySummaryRow(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.green.opacity(0.12))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "globe")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.green)
+                }
+                Text(loc.settingsCountry)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color(.label))
+                Spacer()
+                CountryFlagView(country: preferences.selectedCountry, height: 16, cornerRadius: 3)
+                Text(preferences.autoDetectCountry
+                     ? loc.settingsAutomatic
+                     : preferences.selectedCountry.displayName)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color(.secondaryLabel))
                     .lineLimit(1)
@@ -809,9 +843,8 @@ private struct CountrySheet: View {
             }
         } label: {
             HStack(spacing: 14) {
-                Text(country.flag)
-                    .font(.system(size: 44))
-                    .frame(width: 52, height: 52)
+                CountryFlagView(country: country, height: 36, cornerRadius: 6)
+                    .frame(width: 54, height: 52, alignment: .center)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(country.displayName)

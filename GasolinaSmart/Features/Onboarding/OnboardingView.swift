@@ -85,8 +85,7 @@ struct OnboardingView: View {
                             }
                         } label: {
                             HStack(spacing: 12) {
-                                Text(country.flag)
-                                    .font(.system(size: 28))
+                                CountryFlagView(country: country, height: 26, cornerRadius: 4)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(country.displayName)
                                         .font(.body)
