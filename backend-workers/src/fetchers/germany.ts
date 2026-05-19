@@ -72,15 +72,16 @@ const DE_GRID: Array<{ lat: number; lng: number; label: string }> = [
 ];
 
 const MAX_RADIUS = 25;
-// Tankerkönig's CC service is rate-limited and frequently returns 503
-// under load. The previous implementation retried recursively without a
-// cap and used a 5s sleep, which made the Worker hit its CPU/wall-time
-// limit before it could save anything. We now use bounded exponential
-// backoff and accept that a flaky point will be picked up by the next
-// 15-min cron run.
-const MAX_RETRIES = 2;
 
-async function fetchArea(lat: number, lng: number, apiKey: string, attempt: number = 0): Promise<TKStation[]> {
+// One fetch per point, no retries. Cloudflare Workers cap a single
+// invocation at 50 subrequests on the free plan — with 40 grid points
+// that's already tight, and any retry blows past the limit and aborts
+// the rest of the run (we saw this in production logs: 2 points
+// succeeded, then "Too many subrequests by single Worker invocation"
+// killed the next 38). A point that 503s is dropped from this round
+// and picked up by the 15-min cron on its next pass, which is the
+// graceful degradation we want for a free CC service.
+async function fetchArea(lat: number, lng: number, apiKey: string): Promise<TKStation[]> {
   const url = `${BASE_URL}?lat=${lat}&lng=${lng}&rad=${MAX_RADIUS}&sort=dist&type=all&apikey=${apiKey}`;
 
   const controller = new AbortController();
@@ -94,12 +95,6 @@ async function fetchArea(lat: number, lng: number, apiKey: string, attempt: numb
   }
 
   if (!response.ok) {
-    if (response.status === 503 && attempt < MAX_RETRIES) {
-      const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s
-      console.warn(`[fetcher:DE] 503 from API, retry ${attempt + 1}/${MAX_RETRIES} in ${backoffMs}ms`);
-      await new Promise((r) => setTimeout(r, backoffMs));
-      return fetchArea(lat, lng, apiKey, attempt + 1);
-    }
     throw new Error(`Tankerkoenig API returned ${response.status}`);
   }
 
