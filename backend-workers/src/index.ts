@@ -16,7 +16,10 @@ import { fetchOpenChargeMap, shouldFetchChargingStations } from "./fetchers/open
 import { COUNTRY_INFO, SUPPORTED_COUNTRIES } from "./countries";
 import { fetchSpain, shouldFetchSpain } from "./fetchers/spain";
 import { fetchFrance, shouldFetchFrance } from "./fetchers/france";
-import { fetchUK } from "./fetchers/uk";
+// UKFetcher intentionally not imported: UK now ships as charging-only
+// because gov.uk's Fuel Finder dropped TLS support for our IPs.
+// The fetcher source is kept in src/fetchers/uk.ts for the day a
+// viable feed reappears.
 import { fetchGermany, shouldFetchGermany } from "./fetchers/germany";
 import { fetchItaly } from "./fetchers/italy";
 
@@ -43,27 +46,6 @@ app.get("/health", (c) =>
   c.json({ status: "ok", timestamp: new Date().toISOString() })
 );
 
-// Railway fallback base — gov.uk filters Cloudflare's outbound IPs so
-// UK fuel data lives there instead of in the Worker's D1.
-const RAILWAY_FALLBACK_URL = "https://gasolina-smart-ios-production.up.railway.app";
-
-interface RailwayMetaResponse {
-  station_count?: number;
-  last_fetch?: string | null;
-}
-
-async function fetchUKFuelStatsFromRailway(): Promise<RailwayMetaResponse | null> {
-  try {
-    const resp = await fetch(`${RAILWAY_FALLBACK_URL}/api/meta?country=GB`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!resp.ok) return null;
-    return (await resp.json()) as RailwayMetaResponse;
-  } catch {
-    return null;
-  }
-}
-
 app.get("/api/health", async (c) => {
   const stats = await queryCountryStats(c.env.DB);
   const statsMap = new Map(stats.map((s) => [s.country, s]));
@@ -72,33 +54,22 @@ app.get("/api/health", async (c) => {
   for (const code of SUPPORTED_COUNTRIES) {
     const stat = statsMap.get(code);
     const lastError = await getCountryMetaValue(c.env.DB, code, "last_error");
-    let lastFetch = stat?.last_fetched_at ?? null;
-    let stationsCount = stat?.station_count ?? 0;
+    const lastFetch = stat?.last_fetched_at ?? null;
+    const stationsCount = stat?.station_count ?? 0;
     const chargingCount = stat?.charging_count ?? 0;
     const chargingLastFetch = stat?.charging_last_fetched_at ?? null;
 
-    // UK fuel data lives on the Railway fallback because gov.uk filters
-    // Cloudflare's outbound IPs. Bridge the count + last-fetch over so
-    // /api/health gives a complete picture of every country, even
-    // though this Worker doesn't store UK fuel rows itself.
-    let delegated: string | undefined;
-    if (code === "GB") {
-      const railway = await fetchUKFuelStatsFromRailway();
-      if (railway) {
-        stationsCount = railway.station_count ?? stationsCount;
-        lastFetch = railway.last_fetch ?? lastFetch;
-        delegated = "railway";
-      }
-    }
+    const info = COUNTRY_INFO[code];
+    const chargingOnly = info?.supportedFuels.length === 0;
 
     let status: string;
     let reason: string | undefined;
 
-    if (code === "GB" && delegated) {
-      // We deliberately don't run the UK fetcher on this Worker, so any
-      // stale `last_error` from before that change is noise. Status
-      // reflects whether the Railway fallback has data.
-      status = stationsCount > 0 ? "delegated" : "waiting";
+    if (chargingOnly) {
+      // GB and US: we never fetch fuel for these, so a stale `last_error`
+      // from before they became charging-only is noise. Status reflects
+      // whether the charging dataset has data.
+      status = chargingCount > 0 ? "ok" : "waiting";
     } else if (lastError && lastError.includes("PAUSED:")) {
       status = "paused";
       reason = lastError.replace(/^.*PAUSED:\s*/, "");
@@ -117,7 +88,7 @@ app.get("/api/health", async (c) => {
       chargingCount,
       lastFetch,
       chargingLastFetch,
-      ...(delegated ? { delegatedTo: delegated } : {}),
+      ...(chargingOnly ? { chargingOnly: true } : {}),
       ...(reason ? { reason } : {}),
     };
   }
@@ -310,9 +281,6 @@ app.post("/api/fetch", async (c) => {
         break;
       case "FR":
         result = await fetchFrance(c.env.DB);
-        break;
-      case "GB":
-        result = await fetchUK(c.env.DB);
         break;
       case "DE":
         result = await fetchGermany(c.env.DB, c.env.TANKERKOENIG_API_KEY);

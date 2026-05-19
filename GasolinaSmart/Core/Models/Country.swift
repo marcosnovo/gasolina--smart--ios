@@ -80,27 +80,33 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
     var pricePrecision: Int { 3 }
 
     /// True when the backend has station-level fuel-price data for this
-    /// country. The US is currently charging-only because no public
-    /// station-level fuel API exists (EIA is state-weekly averages,
-    /// GasBuddy has no public API). Callers use this flag to hide the
-    /// fuel UI and force charging-mode for fuel-less countries.
+    /// country. Charging-only countries return false so the UI hides
+    /// the fuel pickers and forces charging-mode regardless of vehicle.
+    ///
+    /// - US: no public station-level fuel-price API exists (EIA is
+    ///   state-weekly averages, GasBuddy has no public API).
+    /// - UK: developer.fuel-finder.service.gov.uk now rejects the TLS
+    ///   handshake from datacenter IPs AND residential IPs after the
+    ///   2025 Motor Fuel Price (Open Data) Regulations restructuring.
+    ///   Neither Cloudflare Workers, Railway nor a Spanish ISP can
+    ///   reach it. Until a viable feed appears (or commercial API),
+    ///   UK ships as charging-only just like the US.
     var hasFuelData: Bool {
         switch self {
-        case .spain, .uk, .france, .germany, .italy: true
-        case .usa: false
+        case .spain, .france, .germany, .italy: true
+        case .uk, .usa: false
         }
     }
 
     var defaultFuel: FuelType {
         switch self {
         case .spain: .gasolina95
-        case .uk: .e10
         case .france: .e10
         case .germany: .e10
         case .italy: .e5
-        // USA never reads this (no fuel UI), but the switch must be
-        // exhaustive — pick gasoline 95 as a harmless placeholder.
-        case .usa: .gasolina95
+        // UK / USA never read this (no fuel UI), but the switch must be
+        // exhaustive — gasoline 95 is a harmless placeholder.
+        case .uk, .usa: .gasolina95
         }
     }
 
@@ -108,15 +114,13 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .spain:
             [.gasolina95, .gasolina98, .dieselA, .dieselPremium, .glp]
-        case .uk:
-            [.e10, .e5, .gasolina98, .dieselA, .dieselPremium]
         case .france:
             [.e10, .e5, .gasolina98, .dieselA, .e85, .glp]
         case .germany:
             [.e5, .e10, .dieselA]
         case .italy:
             [.e5, .gasolina98, .dieselA, .dieselPremium, .glp, .gnc]
-        case .usa:
+        case .uk, .usa:
             []
         }
     }
@@ -143,9 +147,8 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
     var dataFreshness: DataFreshness {
         switch self {
         case .germany: .realtime
-        case .uk: .within30min
         case .spain, .france: .within1hour
-        case .italy, .usa: .daily
+        case .italy, .usa, .uk: .daily
         }
     }
 
@@ -167,7 +170,7 @@ enum Country: String, Codable, CaseIterable, Identifiable, Sendable {
         case .spain:
             "Ministerio para la Transición Ecológica y el Reto Demográfico.\nDatos abiertos: geoportalgasolineras.es"
         case .uk:
-            "Crown copyright. Source: Fuel Finder, operated by VE3 Global Ltd under the Motor Fuel Price (Open Data) Regulations 2025."
+            "Charging data © OpenChargeMap contributors,\nlicensed under CC BY-SA 4.0"
         case .france:
             "Licence Ouverte / Open Licence.\nSource: data.economie.gouv.fr"
         case .germany:

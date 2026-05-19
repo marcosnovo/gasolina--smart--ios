@@ -8,9 +8,6 @@ actor BackendAPIService {
     }()
 
     private var baseURL = "https://gasolina-smart-api.marcosnovo.workers.dev"
-    // gov.uk's edge filters Cloudflare Workers' outbound IPs (HTTP 525). Until
-    // that's resolved, UK requests route to the legacy Railway backend.
-    private let ukBaseURL = "https://gasolina-smart-ios-production.up.railway.app"
 
     private let session: URLSession
     // Reused across every API call. JSONDecoder is thread-safe for decoding
@@ -31,7 +28,12 @@ actor BackendAPIService {
     }
 
     private func base(for country: Country?) -> String {
-        country == .uk ? ukBaseURL : baseURL
+        // Every country is served by the Workers backend. UK used to be
+        // routed to Railway because gov.uk filtered Cloudflare, but now
+        // that we ship UK as charging-only (gov.uk dropped TLS support
+        // for all our IPs) UK reads the same /api/charging/all endpoint
+        // as everyone else.
+        baseURL
     }
 
     private func base(forStationId id: String) -> String {

@@ -27,12 +27,15 @@ export const COUNTRY_INFO: Record<string, CountryInfo> = {
     displayName: "United Kingdom",
     currency: "GBP",
     currencySymbol: "£",
-    supportedFuels: ["e10", "e5", "gasolina98", "dieselA", "dieselPremium"],
-    dataFreshness: "within30min",
+    // gov.uk's Fuel Finder endpoint started rejecting the TLS handshake
+    // from every IP we tried (Cloudflare DCs, Railway, residential),
+    // so UK ships as charging-only for now — same shape as US.
+    supportedFuels: [],
+    dataFreshness: "daily",
     attribution: {
-      text: "Crown copyright. Source: Fuel Finder, operated by VE3 Global Ltd under the Motor Fuel Price (Open Data) Regulations 2025",
-      url: "https://developer.fuel-finder.service.gov.uk",
-      license: "Open Government Licence v3.0",
+      text: "Charging data © OpenChargeMap contributors",
+      url: "https://openchargemap.org",
+      license: "CC BY-SA 4.0",
     },
   },
   FR: {

@@ -36,7 +36,9 @@ final class FuelDataSourceRegistry: Observable {
 
     private init() {
         register(SpainDataSource())
-        register(UKDataSource())
+        // UKDataSource intentionally not registered — UK ships as
+        // charging-only (gov.uk dropped TLS support for our IPs). The
+        // source file is kept for the day a viable feed reappears.
         register(FranceDataSource())
         register(GermanyDataSource())
         register(ItalyDataSource())
