@@ -877,6 +877,22 @@ struct MapView: View {
         // ignore the auto-refresh that re-centers around the user's location.
         guard !isAreaMode else { return }
 
+        // In charging-only mode (EV vehicle or fuel-less country), fuel
+        // stations are irrelevant and would otherwise leak through —
+        // selectedFuelType still holds the vehicle's legacy fuel value
+        // (kept around in case the user flips back to combustion), so
+        // calling nearbySummary here would return that fuel's stations
+        // even though the UI is set to EV. Bail out early and keep the
+        // fuel state cleared.
+        if preferences.isChargingOnlyMode {
+            visibleStations = []
+            cachedCheapest = nil
+            cachedAveragePrice = nil
+            cheapestPriceByFuel = [:]
+            displayedFuelByStation = [:]
+            return
+        }
+
         guard let location = locationManager.location else {
             visibleStations = []
             cachedCheapest = nil
