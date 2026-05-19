@@ -16,7 +16,7 @@ import { fetchOpenChargeMap, shouldFetchChargingStations } from "./fetchers/open
 import { COUNTRY_INFO, SUPPORTED_COUNTRIES } from "./countries";
 import { fetchSpain, shouldFetchSpain } from "./fetchers/spain";
 import { fetchFrance, shouldFetchFrance } from "./fetchers/france";
-import { fetchUK, shouldFetchUK } from "./fetchers/uk";
+import { fetchUK } from "./fetchers/uk";
 import { fetchGermany, shouldFetchGermany } from "./fetchers/germany";
 import { fetchItaly } from "./fetchers/italy";
 
@@ -336,9 +336,15 @@ async function runScheduled(event: ScheduledController, env: Env): Promise<void>
   if (await shouldFetchFrance(env.DB, FETCH_INTERVALS.FR)) {
     await runFetcher(env.DB, "FR", () => fetchFrance(env.DB));
   }
-  if (await shouldFetchUK(env.DB, FETCH_INTERVALS.GB)) {
-    await runFetcher(env.DB, "GB", () => fetchUK(env.DB));
-  }
+  // UK is served exclusively from the Railway fallback backend: gov.uk's
+  // edge filters Cloudflare Workers' outbound IPs (HTTP 525 SSL handshake
+  // failed). The iOS client routes UK requests to Railway directly via
+  // BackendAPIService.base(forCountry: .uk), so populating UK in D1 from
+  // this Worker is both impossible and pointless — it would just spam
+  // the cron logs with 31 errors every 15 min.
+  //
+  // The manual /api/fetch?country=GB endpoint is intentionally kept
+  // active in case Cloudflare ever resolves the gov.uk relationship.
   if (await shouldFetchGermany(env.DB, FETCH_INTERVALS.DE)) {
     await runFetcher(env.DB, "DE", () => fetchGermany(env.DB, env.TANKERKOENIG_API_KEY));
   }
