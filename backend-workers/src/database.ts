@@ -155,20 +155,30 @@ export async function saveStations(
       )
       .bind(country, "last_fetch", now)
   );
-  stmts.push(
-    db
-      .prepare(
-        `INSERT INTO country_meta (country, key, value) VALUES (?, ?, ?)
-         ON CONFLICT(country, key) DO UPDATE SET value = excluded.value`
-      )
-      .bind(country, "station_count", String(stations.length))
-  );
 
   // 3. D1 batches up to ~1000 statements; chunk to be safe.
   const CHUNK = 500;
   for (let i = 0; i < stmts.length; i += CHUNK) {
     await db.batch(stmts.slice(i, i + CHUNK));
   }
+
+  // 4. After upserts settle, refresh `station_count` from the actual
+  // table rather than from `stations.length`. The fetch run only
+  // brings whatever subset survived rate limits / 503s, but upserts
+  // accumulate in D1 — so the run's array length is meaningless as a
+  // "stations available for this country" metric. Query post-batch.
+  const countRow = await db
+    .prepare(`SELECT COUNT(*) AS c FROM stations WHERE country = ?`)
+    .bind(country)
+    .first<{ c: number }>();
+  const tableCount = countRow?.c ?? stations.length;
+  await db
+    .prepare(
+      `INSERT INTO country_meta (country, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(country, key) DO UPDATE SET value = excluded.value`
+    )
+    .bind(country, "station_count", String(tableCount))
+    .run();
 
   return { saved: true, count: stations.length, historyInserts };
 }
