@@ -49,6 +49,7 @@ struct MapView: View {
                     appState.showStationDetail = true
                 },
                 chargingStations: visibleChargingStations,
+                cheapestChargingId: cachedChargingSummary?.cheapestStation?.id,
                 onChargingStationTapped: { station in
                     selectedChargingStation = station
                 },

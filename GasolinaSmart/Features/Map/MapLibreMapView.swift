@@ -17,6 +17,7 @@ enum PriceTier {
 
 class ChargingPointAnnotation: MLNPointAnnotation {
     var chargingStation: ChargingStation?
+    var isCheapest = false
 }
 
 struct VisibleMapArea: Equatable {
@@ -32,6 +33,11 @@ struct MapLibreMapView: UIViewRepresentable {
     let favoriteIds: Set<String>
     let onStationTapped: (FuelStation) -> Void
     var chargingStations: [ChargingStation] = []
+    /// Id of the cheapest nearby charging station (or fastest fallback when
+    /// no prices are advertised). Drives the same "premium pin" treatment
+    /// that fuel stations get for their cheapest — pulse rings, crown
+    /// badge and shine.
+    var cheapestChargingId: String? = nil
     var onChargingStationTapped: ((ChargingStation) -> Void)?
     var centerOnUserCounter: Int
     var zoomRadiusKm: Double?
@@ -278,6 +284,12 @@ struct MapLibreMapView: UIViewRepresentable {
             needsFullReconfigure = false
         }
 
+        /// Tracks which charging annotation currently owns the "cheapest"
+        /// pin treatment. When the cheapest changes we have to remove +
+        /// re-add the affected annotations so MapLibre dequeues the right
+        /// view type (otherwise the reuse pool gives us the wrong class).
+        private var currentCheapestChargingId: String?
+
         func syncChargingAnnotations(on mapView: MLNMapView) {
             let currentIds = Set(chargingAnnotationMap.keys)
             let newIds = Set(parent.chargingStations.map(\.id))
@@ -286,6 +298,9 @@ struct MapLibreMapView: UIViewRepresentable {
             if !idsToRemove.isEmpty {
                 let annsToRemove = idsToRemove.compactMap { chargingAnnotationMap.removeValue(forKey: $0) }
                 mapView.removeAnnotations(annsToRemove)
+                if idsToRemove.contains(currentCheapestChargingId ?? "") {
+                    currentCheapestChargingId = nil
+                }
             }
 
             let idsToAdd = newIds.subtracting(currentIds)
@@ -297,10 +312,32 @@ struct MapLibreMapView: UIViewRepresentable {
                     let ann = ChargingPointAnnotation()
                     ann.coordinate = station.coordinate
                     ann.chargingStation = station
+                    ann.isCheapest = station.id == parent.cheapestChargingId
                     chargingAnnotationMap[station.id] = ann
                     annsToAdd.append(ann)
                 }
                 mapView.addAnnotations(annsToAdd)
+            }
+
+            // Swap which annotation gets the "cheapest" treatment.
+            // We remove + re-add the two affected annotations so the
+            // reuse pool returns the right view class (the cheapest
+            // variant has a different reuseIdentifier).
+            let newCheapestId = parent.cheapestChargingId
+            if newCheapestId != currentCheapestChargingId {
+                if let oldId = currentCheapestChargingId,
+                   let oldAnn = chargingAnnotationMap[oldId] {
+                    oldAnn.isCheapest = false
+                    mapView.removeAnnotation(oldAnn)
+                    mapView.addAnnotation(oldAnn)
+                }
+                if let newId = newCheapestId,
+                   let newAnn = chargingAnnotationMap[newId] {
+                    newAnn.isCheapest = true
+                    mapView.removeAnnotation(newAnn)
+                    mapView.addAnnotation(newAnn)
+                }
+                currentCheapestChargingId = newCheapestId
             }
         }
 
@@ -331,6 +368,16 @@ struct MapLibreMapView: UIViewRepresentable {
             }
 
             if let chargingAnn = annotation as? ChargingPointAnnotation {
+                if chargingAnn.isCheapest {
+                    let reuseId = "cheapest_charging"
+                    let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) as? CheapestChargingPinView
+                        ?? CheapestChargingPinView(reuseIdentifier: reuseId)
+                    if let station = chargingAnn.chargingStation {
+                        view.configure(for: station)
+                    }
+                    view.activate()
+                    return view
+                }
                 let reuseId = "charging_pill"
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) as? ChargingPinView
                     ?? ChargingPinView(reuseIdentifier: reuseId)
@@ -1062,6 +1109,270 @@ class CheapestPinView: MLNAnnotationView {
         // Slide the gradient stripe across the pill, then leave it parked
         // off-screen for the rest of the cycle. Total period of 3.2s keeps
         // the effect "premium" rather than busy.
+        let sweep = CABasicAnimation(keyPath: "locations")
+        sweep.fromValue = [-0.5, -0.35, -0.2]
+        sweep.toValue = [1.2, 1.35, 1.5]
+        sweep.duration = 1.0
+        sweep.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        let group = CAAnimationGroup()
+        group.animations = [sweep]
+        group.duration = 3.2
+        group.repeatCount = .infinity
+        group.beginTime = CACurrentMediaTime()
+        group.isRemovedOnCompletion = false
+        group.fillMode = .forwards
+
+        shineLayer.add(group, forKey: "shine")
+    }
+
+    private func stopShine() {
+        isShining = false
+        shineLayer.removeAnimation(forKey: "shine")
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        isPulsing = false
+        stopPulseAnimations()
+        stopShine()
+        pulseRing1.isHidden = true
+        pulseRing2.isHidden = true
+        layer.zPosition = 0
+    }
+
+    override func setSelected(_ selected: Bool, animated: Bool) {
+        super.setSelected(selected, animated: animated)
+        let t: CGAffineTransform = selected ? .init(scaleX: 1.15, y: 1.15) : .identity
+        if animated {
+            UIView.animate(withDuration: 0.12) { self.transform = t }
+        } else {
+            transform = t
+        }
+    }
+}
+
+// MARK: - Cheapest Charging Pin (the EV equivalent of CheapestPinView)
+
+/// Premium pin for the cheapest nearby charging point: same pulse rings,
+/// crown badge and shine sweep as the fuel CheapestPinView, but with
+/// the charging-blue / fast-green palette and a two-line value+unit
+/// label so the same component handles €/kWh, kW or the "EV / Rápida"
+/// fallback when no price is published.
+class CheapestChargingPinView: MLNAnnotationView {
+    private let pulseRing1 = UIView()
+    private let pulseRing2 = UIView()
+    private let pillBackground = UIView()
+    private let valueLabel = UILabel()
+    private let unitLabel = UILabel()
+    private let tailLayer = CAShapeLayer()
+    private let crownBadge = UIImageView()
+    private let shineLayer = CAGradientLayer()
+    private var isPulsing = false
+    private var isShining = false
+
+    private static let pillWidth: CGFloat = 76
+    private static let pillHeight: CGFloat = 38
+    private static let tailHeight: CGFloat = 7
+    private static let viewWidth: CGFloat = 88
+    private static let viewHeight: CGFloat = 54
+    private static let accentGreen = UIColor(red: 0.16, green: 0.67, blue: 0.33, alpha: 1)
+    private static let chargingBlue = UIColor(red: 0.20, green: 0.45, blue: 0.85, alpha: 1)
+
+    private static let crownImage: UIImage? = UIImage(systemName: "crown.fill",
+        withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .bold))?
+        .withTintColor(.white, renderingMode: .alwaysOriginal)
+
+    override init(reuseIdentifier: String?) {
+        super.init(reuseIdentifier: reuseIdentifier)
+        let w = Self.viewWidth
+        let h = Self.viewHeight
+        frame = CGRect(x: 0, y: 0, width: w, height: h)
+        centerOffset = CGVector(dx: 0, dy: -h / 2)
+        isOpaque = false
+        backgroundColor = .clear
+
+        let pillX = (w - Self.pillWidth) / 2
+        let pillY: CGFloat = 4
+        let ringSize: CGFloat = Self.pillWidth + 12
+        for ring in [pulseRing1, pulseRing2] {
+            ring.frame = CGRect(
+                x: (w - ringSize) / 2,
+                y: pillY + (Self.pillHeight - ringSize) / 2,
+                width: ringSize,
+                height: ringSize
+            )
+            ring.layer.cornerRadius = ringSize / 2
+            ring.backgroundColor = Self.accentGreen.withAlphaComponent(0.3)
+            ring.isHidden = true
+            addSubview(ring)
+        }
+
+        pillBackground.frame = CGRect(x: pillX, y: pillY, width: Self.pillWidth, height: Self.pillHeight)
+        pillBackground.backgroundColor = Self.accentGreen
+        pillBackground.layer.cornerRadius = Self.pillHeight / 2
+        pillBackground.layer.shadowColor = UIColor.black.cgColor
+        pillBackground.layer.shadowOpacity = 0.28
+        pillBackground.layer.shadowOffset = CGSize(width: 0, height: 2)
+        pillBackground.layer.shadowRadius = 4
+        pillBackground.layer.shadowPath = UIBezierPath(
+            roundedRect: CGRect(origin: .zero, size: pillBackground.bounds.size),
+            cornerRadius: Self.pillHeight / 2
+        ).cgPath
+        addSubview(pillBackground)
+
+        // Shine layer — same Apple-Pay-style glint as the fuel cheapest pin.
+        shineLayer.frame = pillBackground.bounds
+        shineLayer.cornerRadius = Self.pillHeight / 2
+        shineLayer.masksToBounds = true
+        shineLayer.colors = [
+            UIColor.white.withAlphaComponent(0).cgColor,
+            UIColor.white.withAlphaComponent(0.55).cgColor,
+            UIColor.white.withAlphaComponent(0).cgColor,
+        ]
+        shineLayer.startPoint = CGPoint(x: 0, y: 0.3)
+        shineLayer.endPoint = CGPoint(x: 1, y: 0.7)
+        shineLayer.locations = [-0.5, -0.35, -0.2]
+        pillBackground.layer.addSublayer(shineLayer)
+
+        valueLabel.frame = CGRect(x: 0, y: 5, width: Self.pillWidth, height: 16)
+        valueLabel.textAlignment = .center
+        valueLabel.font = .systemFont(ofSize: 14, weight: .bold)
+        valueLabel.textColor = .white
+        valueLabel.adjustsFontSizeToFitWidth = true
+        valueLabel.minimumScaleFactor = 0.75
+        pillBackground.addSubview(valueLabel)
+
+        unitLabel.frame = CGRect(x: 0, y: 21, width: Self.pillWidth, height: 12)
+        unitLabel.textAlignment = .center
+        unitLabel.font = .systemFont(ofSize: 10, weight: .semibold)
+        unitLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        pillBackground.addSubview(unitLabel)
+
+        let tailW: CGFloat = 10
+        let tailTop = pillY + Self.pillHeight - 1
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: w / 2 - tailW / 2, y: tailTop))
+        path.addLine(to: CGPoint(x: w / 2, y: tailTop + Self.tailHeight))
+        path.addLine(to: CGPoint(x: w / 2 + tailW / 2, y: tailTop))
+        path.close()
+        tailLayer.path = path.cgPath
+        tailLayer.fillColor = Self.accentGreen.cgColor
+        tailLayer.shadowColor = UIColor.black.cgColor
+        tailLayer.shadowOpacity = 0.22
+        tailLayer.shadowOffset = CGSize(width: 0, height: 2)
+        tailLayer.shadowRadius = 2.5
+        layer.insertSublayer(tailLayer, below: pillBackground.layer)
+
+        crownBadge.frame = CGRect(x: pillX - 6, y: pillY - 4, width: 14, height: 14)
+        crownBadge.image = Self.crownImage
+        crownBadge.backgroundColor = UIColor(red: 0.95, green: 0.78, blue: 0.0, alpha: 1)
+        crownBadge.layer.cornerRadius = 7
+        crownBadge.contentMode = .center
+        crownBadge.layer.shadowColor = UIColor.black.cgColor
+        crownBadge.layer.shadowOpacity = 0.2
+        crownBadge.layer.shadowOffset = CGSize(width: 0, height: 1)
+        crownBadge.layer.shadowRadius = 1.5
+        addSubview(crownBadge)
+
+        layer.zPosition = 1000
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(for station: ChargingStation) {
+        // Same content rules as the regular ChargingPinView so the user
+        // sees consistent data even when this one is "crowned": price if
+        // available, kW fallback, then "EV / Rápida" / "EV / —".
+        if station.isFree {
+            valueLabel.text = "0,00"
+            unitLabel.text = "€/kWh"
+        } else if let price = station.pricePerKWh {
+            valueLabel.text = price.priceFormatted
+            unitLabel.text = "€/kWh"
+        } else if let power = station.maxPowerKW {
+            valueLabel.text = String(format: "%g", power.rounded())
+            unitLabel.text = "kW"
+        } else {
+            valueLabel.text = "EV"
+            unitLabel.text = station.speedCategory == .fast ? "Rápida" : "—"
+        }
+    }
+
+    func activate() {
+        pulseRing1.isHidden = false
+        pulseRing2.isHidden = false
+        layer.zPosition = 1000
+        startPulse()
+        startShine()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil && !pulseRing1.isHidden {
+            DispatchQueue.main.async { [weak self] in
+                self?.startPulse()
+                self?.startShine()
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if shineLayer.frame.size != pillBackground.bounds.size {
+            shineLayer.frame = pillBackground.bounds
+        }
+        if !isPulsing && window != nil && !pulseRing1.isHidden {
+            DispatchQueue.main.async { [weak self] in self?.startPulse() }
+        }
+        if !isShining && window != nil && !pulseRing1.isHidden {
+            DispatchQueue.main.async { [weak self] in self?.startShine() }
+        }
+    }
+
+    private func startPulse() {
+        guard window != nil, !pulseRing1.isHidden else { return }
+        stopPulseAnimations()
+        isPulsing = true
+        addPulseAnimation(to: pulseRing1.layer, delay: 0)
+        addPulseAnimation(to: pulseRing2.layer, delay: 0.8)
+    }
+
+    private func addPulseAnimation(to layer: CALayer, delay: CFTimeInterval) {
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = 1.0
+        scale.toValue = 2.2
+
+        let opacity = CABasicAnimation(keyPath: "opacity")
+        opacity.fromValue = 0.5
+        opacity.toValue = 0.0
+
+        let group = CAAnimationGroup()
+        group.animations = [scale, opacity]
+        group.duration = 1.6
+        group.beginTime = CACurrentMediaTime() + delay
+        group.repeatCount = .infinity
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        group.isRemovedOnCompletion = false
+        group.fillMode = .forwards
+
+        layer.add(group, forKey: "pulse")
+    }
+
+    private func stopPulseAnimations() {
+        pulseRing1.layer.removeAllAnimations()
+        pulseRing2.layer.removeAllAnimations()
+        pulseRing1.transform = .identity
+        pulseRing2.transform = .identity
+        pulseRing1.alpha = 0
+        pulseRing2.alpha = 0
+    }
+
+    private func startShine() {
+        guard window != nil, !pulseRing1.isHidden else { return }
+        shineLayer.removeAnimation(forKey: "shine")
+        isShining = true
         let sweep = CABasicAnimation(keyPath: "locations")
         sweep.fromValue = [-0.5, -0.35, -0.2]
         sweep.toValue = [1.2, 1.35, 1.5]
