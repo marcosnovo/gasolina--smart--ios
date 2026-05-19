@@ -157,6 +157,10 @@ struct MapView: View {
                let detected = Country.detect(from: newLocation.coordinate),
                detected != preferences.selectedCountry {
                 preferences.selectedCountry = detected
+                // Surface the Citymapper-style "Welcome to X" overlay so
+                // the user sees the swap happen instead of the map just
+                // mutating silently underneath them.
+                appState.countryTransition = detected
             }
             if preferences.effectiveShowChargingStations {
                 Task {

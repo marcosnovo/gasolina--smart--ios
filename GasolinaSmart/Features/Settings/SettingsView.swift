@@ -697,85 +697,46 @@ private struct NotificationsSheet: View {
     }
 }
 
-// MARK: - Country Sheet
+// MARK: - Country Sheet (Citymapper-style picker)
 
 private struct CountrySheet: View {
     @Environment(UserPreferences.self) private var preferences
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     private var loc: Loc { preferences.loc }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 8) {
-                    Button {
-                        preferences.autoDetectCountry = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text("🌐")
-                                .font(.system(size: 24))
-                                .frame(width: 28)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(loc.settingsAutomatic)
-                                    .font(.system(size: 15, weight: .semibold))
-                                Text(loc.settingsAutoCountryFooter)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color(.tertiaryLabel))
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            if preferences.autoDetectCountry {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(.green)
-                            }
-                        }
-                        .padding(14)
-                        .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .contentShape(Rectangle())
+                VStack(spacing: 14) {
+                    // Hero header — sets the tone before the cards.
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(loc.countryPickerHeader)
+                            .font(.system(size: 28, weight: .heavy, design: .rounded))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(loc.countryPickerSubheader)
+                            .font(.subheadline)
+                            .foregroundStyle(Color(.secondaryLabel))
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+
+                    autoDetectCard
 
                     ForEach(Country.allCases) { country in
-                        let isSelected = preferences.selectedCountry == country && !preferences.autoDetectCountry
-                        Button {
-                            preferences.autoDetectCountry = false
-                            preferences.selectedCountry = country
-                        } label: {
-                            HStack(spacing: 12) {
-                                Text(country.flag)
-                                    .font(.system(size: 24))
-                                    .frame(width: 28)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(country.displayName)
-                                        .font(.system(size: 15, weight: .semibold))
-                                    Text(loc.freshnessText(country.dataFreshness))
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(Color(.tertiaryLabel))
-                                }
-                                Spacer()
-                                if isSelected {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundStyle(.green)
-                                }
-                            }
-                            .padding(14)
-                            .background(Color(.secondarySystemGroupedBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                        countryCard(country)
                     }
 
                     Text(loc.settingsCountryFooter)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.footnote)
                         .foregroundStyle(Color(.tertiaryLabel))
-                        .padding(.top, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 12)
                 }
-                .padding(16)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 32)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle(loc.settingsCountry)
@@ -786,6 +747,124 @@ private struct CountrySheet: View {
                 }
             }
         }
+    }
+
+    private var autoDetectCard: some View {
+        Button {
+            preferences.autoDetectCountry = true
+            dismiss()
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.Colors.accent.opacity(0.12))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "location.fill.viewfinder")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.accent)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(loc.countryPickerAuto)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color(.label))
+                    Text(loc.settingsAutoCountryFooter)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 8)
+                if preferences.autoDetectCountry {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.Colors.accent)
+                }
+            }
+            .padding(16)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        preferences.autoDetectCountry ? Theme.Colors.accent.opacity(0.45) : .clear,
+                        lineWidth: 2
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CountryCardButtonStyle())
+    }
+
+    private func countryCard(_ country: Country) -> some View {
+        let isActive = preferences.selectedCountry == country && !preferences.autoDetectCountry
+        return Button {
+            preferences.autoDetectCountry = false
+            let didChange = preferences.selectedCountry != country
+            preferences.selectedCountry = country
+            dismiss()
+            // Fire the welcome-to-X overlay only when the picker
+            // actually changed the active country.
+            if didChange {
+                appState.countryTransition = country
+            }
+        } label: {
+            HStack(spacing: 14) {
+                Text(country.flag)
+                    .font(.system(size: 44))
+                    .frame(width: 52, height: 52)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(country.displayName)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color(.label))
+
+                    HStack(spacing: 6) {
+                        Image(systemName: country.hasFuelData ? "fuelpump.fill" : "bolt.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(country.hasFuelData
+                             ? loc.countryBadgeFuelCharging
+                             : loc.countryBadgeChargingOnly)
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(country.hasFuelData ? Theme.Colors.accent : Theme.Colors.charging)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        (country.hasFuelData ? Theme.Colors.accent : Theme.Colors.charging)
+                            .opacity(0.12)
+                    )
+                    .clipShape(Capsule())
+
+                    Text(loc.freshnessText(country.dataFreshness))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+
+                Spacer(minLength: 8)
+                if isActive {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.Colors.accent)
+                }
+            }
+            .padding(16)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isActive ? Theme.Colors.accent.opacity(0.45) : .clear, lineWidth: 2)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CountryCardButtonStyle())
+    }
+}
+
+private struct CountryCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

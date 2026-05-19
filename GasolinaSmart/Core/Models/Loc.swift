@@ -167,6 +167,17 @@ struct Loc {
     var settingsOfficialData: String { s("Datos oficiales", "Official data", "Données officielles", "Offizielle Daten", "Dados oficiais") }
     var settingsChargingOn: String { s("Carga eléctrica", "EV charging", "Recharge élec.", "E-Ladestationen", "Carregamento") }
 
+    // MARK: - Country transition overlay
+
+    var countryTransitionWelcome: String { s("Cambiando a", "Switching to", "Passage à", "Wechsel zu", "Mudando para") }
+    var countryTransitionFuelAndCharging: String { s("Combustible y carga eléctrica", "Fuel and EV charging", "Carburant et recharge", "Kraftstoff & Ladestationen", "Combustível e carregamento") }
+    var countryTransitionChargingOnly: String { s("Solo carga eléctrica", "EV charging only", "Recharge uniquement", "Nur Ladestationen", "Apenas carregamento") }
+    var countryPickerHeader: String { s("Elige tu país", "Choose your country", "Choisissez votre pays", "Wählen Sie Ihr Land", "Escolha o seu país") }
+    var countryPickerSubheader: String { s("Combustible y puntos de recarga adaptados a cada región.", "Fuel and charging adapted to each region.", "Carburant et bornes adaptés à chaque région.", "Kraftstoff & Ladestationen pro Region.", "Combustível e carregadores adaptados.") }
+    var countryPickerAuto: String { s("Detectar automáticamente", "Detect automatically", "Détecter automatiquement", "Automatisch erkennen", "Detetar automaticamente") }
+    var countryBadgeChargingOnly: String { s("Solo carga eléctrica", "Charging only", "Recharge seulement", "Nur Ladestationen", "Só carregamento") }
+    var countryBadgeFuelCharging: String { s("Combustible + carga", "Fuel + charging", "Carburant + recharge", "Kraftstoff + Laden", "Combustível + carga") }
+
     // MARK: - Vehicle Edit
 
     var vehicleEdit: String { s("Editar vehículo", "Edit vehicle", "Modifier le véhicule", "Fahrzeug bearbeiten", "Editar veículo") }
