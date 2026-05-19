@@ -81,6 +81,7 @@ struct MapLibreMapView: UIViewRepresentable {
     func updateUIView(_ mapView: MLNMapView, context: Context) {
         let coordinator = context.coordinator
         let previousCheapestId = coordinator.parent.cheapestId
+        let previousCheapestChargingId = coordinator.parent.cheapestChargingId
         coordinator.parent = self
 
         let expectedURL = isDarkMode ? Self.darkStyleURL : Self.lightStyleURL
@@ -130,6 +131,18 @@ struct MapLibreMapView: UIViewRepresentable {
            CLLocationCoordinate2DIsValid(userCoord) {
             coordinator.lastProgrammaticChangeAt = Date()
             coordinator.fitBounds(on: mapView, coordinates: [userCoord, cheapestAnn.coordinate])
+        }
+
+        // EV equivalent: when the cheapest charger changes, frame the
+        // camera between the user and the new pin so the user can see
+        // both at a glance — same UX as the fuel cheapest pin.
+        if !suppressCameraFit,
+           cheapestChargingId != previousCheapestChargingId, let id = cheapestChargingId,
+           let ann = coordinator.chargingAnnotationMap[id],
+           let userCoord = mapView.userLocation?.coordinate,
+           CLLocationCoordinate2DIsValid(userCoord) {
+            coordinator.lastProgrammaticChangeAt = Date()
+            coordinator.fitBounds(on: mapView, coordinates: [userCoord, ann.coordinate])
         }
     }
 
@@ -339,6 +352,21 @@ struct MapLibreMapView: UIViewRepresentable {
                 }
                 currentCheapestChargingId = newCheapestId
             }
+
+            // Initial fit for EV-only users: when there's no fuel
+            // cheapest to frame on but there IS a cheapest charger,
+            // frame the camera between the user and the charger so the
+            // first thing they see is the recommended point.
+            if !hasFittedInitialBounds,
+               parent.cheapestId == nil,
+               let cheapestId = currentCheapestChargingId,
+               let cheapestAnn = chargingAnnotationMap[cheapestId],
+               let userCoord = mapView.userLocation?.coordinate,
+               CLLocationCoordinate2DIsValid(userCoord) {
+                hasFittedInitialBounds = true
+                lastProgrammaticChangeAt = Date()
+                fitBounds(on: mapView, coordinates: [userCoord, cheapestAnn.coordinate], animated: false)
+            }
         }
 
         func fitBounds(on mapView: MLNMapView, coordinates: [CLLocationCoordinate2D], animated: Bool = true) {
@@ -470,6 +498,12 @@ struct MapLibreMapView: UIViewRepresentable {
                     hasFittedInitialBounds = true
                     lastProgrammaticChangeAt = Date()
                     fitBounds(on: mapView, coordinates: [coord, cheapestAnn.coordinate], animated: false)
+                } else if let chargingId = parent.cheapestChargingId,
+                          let chargingAnn = chargingAnnotationMap[chargingId] {
+                    // EV-only mode: frame on the recommended charger.
+                    hasFittedInitialBounds = true
+                    lastProgrammaticChangeAt = Date()
+                    fitBounds(on: mapView, coordinates: [coord, chargingAnn.coordinate], animated: false)
                 } else {
                     hasFittedInitialBounds = true
                     lastProgrammaticChangeAt = Date()
