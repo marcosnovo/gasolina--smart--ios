@@ -4,6 +4,11 @@ struct ContentView: View {
     @Environment(UserPreferences.self) private var preferences
     @Environment(AppState.self) private var appState
 
+    /// Shows the launch splash only on cold launch; iOS keeps ContentView
+    /// alive between background/foreground so this @State stays false
+    /// after the first time it flips.
+    @State private var showSplash = true
+
     private var loc: Loc { preferences.loc }
 
     var body: some View {
@@ -37,7 +42,20 @@ struct ContentView: View {
                     .transition(.opacity)
                     .zIndex(100)
             }
+
+            // Cold-launch splash — only shown the first time ContentView
+            // appears in this process. Skipped if the user hasn't
+            // completed onboarding (we don't want it to flash before the
+            // onboarding hero).
+            if showSplash && preferences.hasCompletedOnboarding {
+                SplashView(onComplete: {
+                    showSplash = false
+                })
+                .transition(.opacity)
+                .zIndex(200)
+            }
         }
         .animation(.easeInOut(duration: 0.25), value: appState.countryTransition)
+        .animation(.easeInOut(duration: 0.2), value: showSplash)
     }
 }
